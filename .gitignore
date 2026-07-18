@@ -32,7 +32,10 @@ build/
 ### VS Code ###
 .vscode/
 
-### Local config with secrets ###
+### .env file with secrets ###
+.env
+
+### Local config ###
 src/main/resources/application-local.yml
 src/main/resources/application-dev.yml
 src/main/resources/application-test.yml

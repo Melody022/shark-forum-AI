@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: ${APP_PORT:8081}
   tomcat:
     uri-encoding: UTF-8
 
@@ -7,8 +7,19 @@ spring:
   application:
     name: paicoding-ai
 
-  profiles:
-    active: dev
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/paicoding_ai?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  ai:
+    openai:
+      base-url: ${AI_BASE_URL:https://api.deepseek.com}
+      api-key: ${AI_API_KEY:}
+      chat:
+        options:
+          model: ${AI_MODEL:deepseek-chat}
 
 ai:
   session:
