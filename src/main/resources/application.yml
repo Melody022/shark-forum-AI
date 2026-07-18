@@ -1,0 +1,23 @@
+server:
+  port: 8081
+  tomcat:
+    uri-encoding: UTF-8
+
+spring:
+  application:
+    name: paicoding-ai
+
+  profiles:
+    active: dev
+
+ai:
+  session:
+    title: "HELLO, 我是AI助手"
+    describe: "我是由技术派倾力打造的智能助理，我能推荐教程、答疑解惑，还能为您激发创意、畅聊心事。"
+    examples:
+      - "能帮我推荐一个合适的课吗？"
+      - "最近有什么新课吗？"
+      - "如何选择适合我的课程？"
+      - "Java和Python有什么区别？"
+      - "Spring Boot怎么学？"
+
