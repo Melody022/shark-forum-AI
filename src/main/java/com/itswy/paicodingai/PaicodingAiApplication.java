@@ -15,27 +15,36 @@ import java.net.InetAddress;
 public class PaicodingAiApplication {
 
     public static void main(String[] args) throws Exception {
-        //创建Spring应用实例
         SpringApplication app = new SpringApplicationBuilder(PaicodingAiApplication.class).build(args);
-        //启动Spring应用,启动后获取Environment对象，env中有配置文件
         Environment env = app.run(args).getEnvironment();
 
         String protocol = "http";
-        if(env.getProperty("server.ssl.key-store") != null){
+        if (env.getProperty("server.ssl.key-store") != null) {
             protocol = "https";
         }
-        log.info("\n----------------------------------------------------------\n\t" +
-                        "Application '{}' is running! Access URLs:\n\t" +
-                        "Local: \t\t{}://localhost:{}\n\t" +
-                        "External: \t{}://{}:{}\n\t" +
-                        "Profile(s): \t{}\n----------------------------------------------------------",
-                env.getProperty("spring.application.name"),
-                protocol,
-                env.getProperty("server.port"),
-                protocol,
-                InetAddress.getLocalHost().getHostAddress(),// 获取本机IP
-                env.getProperty("server.port"),
-                env.getActiveProfiles());
-    }
 
+        String host = InetAddress.getLocalHost().getHostAddress();
+        String port = env.getProperty("server.port", "8081");
+
+        log.info("\n"
+                + "=========================================================\n"
+                + "  paicoding-ai 启动成功！\n"
+                + "---------------------------------------------------------\n"
+                + "  📌 控制台页面（启动即用）：\n"
+                + "     {}://localhost:{}/ai-chat.html\n"
+                + "\n"
+                + "  📌 API 文档：\n"
+                + "     {}://localhost:{}/ai/session        POST  创建会话\n"
+                + "     {}://localhost:{}/ai/chat           POST  流式对话\n"
+                + "     {}://localhost:{}/ai/stop           POST  停止生成\n"
+                + "     {}://localhost:{}/ai/history        GET   历史会话\n"
+                + "=========================================================\n",
+                protocol, port,
+                protocol, port,
+                protocol, port,
+                protocol, port,
+                protocol, port,
+                protocol, port
+        );
+    }
 }

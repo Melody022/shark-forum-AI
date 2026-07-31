@@ -1,16 +1,42 @@
 package com.itswy.paicodingai.service;
 
-import com.baomidou.mybatisplus.extension.service.IService;
-import com.itswy.paicodingai.entity.ChatSession;
-import com.itswy.paicodingai.mapper.ChatSessionMapper;
-import com.itswy.paicodingai.config.SessionProperties;
+import com.itswy.paicodingai.vo.ChatSessionVO;
 import com.itswy.paicodingai.vo.SessionVO;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import org.springframework.stereotype.Service;
-import java.util.*;
 
-public interface ChatSessionService extends IService<ChatSession> {
+import java.util.List;
+import java.util.Map;
 
+/**
+ * ==========================================================================
+ * 会话管理服务接口
+ * ==========================================================================
+ *
+ * @date 2026-07-18
+ */
+public interface ChatSessionService {
+
+    /**
+     * 创建新会话
+     */
     SessionVO createSession(Integer num);
 
+    /**
+     * 更新会话
+     */
+    void update(String sessionId, String title, Long userId);
+
+    /**
+     * 查询历史会话列表
+     */
+    Map<String, List<ChatSessionVO>> queryHistorySession();
+
+    /**
+     * 删除历史会话
+     */
+    void deleteHistorySession(String sessionId);
+
+    /**
+     * 修改会话标题
+     */
+    void updateTitle(String sessionId, String title);
 }

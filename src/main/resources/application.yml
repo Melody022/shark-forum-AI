@@ -7,10 +7,13 @@ spring:
   application:
     name: paicoding-ai
 
+  profiles:
+    active: dev
+
   datasource:
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/paicoding_ai?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    url: jdbc:mysql://127.0.0.1:3306/paicoding_ai?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   ai:
@@ -26,9 +29,11 @@ ai:
     title: "HELLO, 我是AI助手"
     describe: "我是由技术派倾力打造的智能助理，我能推荐教程、答疑解惑，还能为您激发创意、畅聊心事。"
     examples:
-      - "能帮我推荐一个合适的课吗？"
-      - "最近有什么新课吗？"
-      - "如何选择适合我的课程？"
+      - "能帮我推荐一个合适的教程吗？"
+      - "最近有什么热门文章？"
+      - "如何入门Java编程？"
       - "Java和Python有什么区别？"
       - "Spring Boot怎么学？"
 
+  system:
+    chat: "你是技术派(paicoding)论坛的AI助手，你的名字叫技术派。你是由技术派团队基于大语言模型打造的智能助理。你的任务是帮助用户解答技术问题、推荐教程文章、提供编程建议。请始终用中文回答，回答要简洁清晰、有帮助。"

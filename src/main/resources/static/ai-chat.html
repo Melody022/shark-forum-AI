@@ -125,21 +125,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 <script>
 // ==================== 状态 ====================
-var allExamples = [
-    '能帮我推荐一个合适的课吗？',
-    'Spring Boot怎么学？',
-    'Java和Python有什么区别？',
-    '如何选择适合我的课程？',
-    '最近有什么新课吗？',
-    '面向对象三大特征是什么？',
-    'JVM内存模型是怎样的？',
-    'MySQL索引怎么优化？'
-];
 var sessionMap = {};    // sid -> {title, msgs: [{role, text}]}
 var sessionOrder = [];  // 有序的 sid 列表
 var currentSid = null;
 var sending = false;
-var xhrChat = null;
+var abortController = null;
 
 // ==================== DOM ====================
 var msgBox = document.getElementById('msgBox');
@@ -164,7 +154,7 @@ function scrollDown(){setTimeout(function(){msgBox.scrollTop=msgBox.scrollHeight
 // ==================== 热门问题 ====================
 function fetchExamples(callback){
     var xhr=new XMLHttpRequest();
-    xhr.open('GET','/ai/examples?num=4',true);
+    xhr.open('GET','/session/examples?n=4',true);
     xhr.onload=function(){
         if(xhr.status===200){
             try{
@@ -191,7 +181,7 @@ switchHot.onclick=function(){renderHot()};
 // ==================== 会话管理 ====================
 function createSession(callback){
     var xhr=new XMLHttpRequest();
-    xhr.open('POST','/ai/session?num=3',true);
+    xhr.open('POST','/session?n=3',true);
     xhr.onload=function(){
         if(xhr.status===200){
             try{
@@ -268,44 +258,86 @@ function addMsg(role,text,save){
     return d;
 }
 
-// ==================== 聊天 ====================
+// ==================== 聊天（SSE 流式）====================
 function doSend(text){
     if(sending||!text)return;
     if(!currentSid){createSession(function(){doSend(text)});return}
     sending=true;btnSend.disabled=true;stopArea.style.display='';
     addMsg('user',text,true);
-    // AI 区域
+    // AI 消息气泡（先显示"正在输入..."）
     var aiDiv=document.createElement('div');
     aiDiv.className='message message-ai';
     aiDiv.innerHTML='<div class="message-avatar">🤖</div><div class="message-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
     msgBox.appendChild(aiDiv);scrollDown();
     var bubble=aiDiv.querySelector('.message-bubble');
-    xhrChat=new XMLHttpRequest();
-    xhrChat.open('POST','/ai/chat',true);
-    xhrChat.setRequestHeader('Content-Type','application/json');
-    xhrChat.responseType='text';
-    xhrChat.onload=function(){
-        if(xhrChat.status===200){
-            var lines=xhrChat.responseText.split('\n');var ans='';
-            for(var i=0;i<lines.length;i++){
-                var ln=lines[i].trim();
-                if(ln.startsWith('data:')){
-                    var d=ln.substring(5).trim();
-                    if(d==='[DONE]')continue;
-                    try{var j=JSON.parse(d);if(j.content)ans+=j.content}catch(e){}
+
+    abortController = new AbortController();
+    var answer = '';
+
+    fetch('/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question: text, sessionId: currentSid || ''}),
+        signal: abortController.signal
+    }).then(function(response){
+        if(!response.ok){bubble.textContent='请求失败('+response.status+')';finishSend();return;}
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+
+        function read(){
+            reader.read().then(function(result){
+                if(result.done){finishSend();return;}
+                buffer += decoder.decode(result.value, {stream: true});
+                // 按行切分，可能最后一行不完整
+                var lines = buffer.split('\n');
+                buffer = lines.pop(); // 不完整的留到下次
+                lines.forEach(function(line){
+                    if(line.startsWith('data:')){
+                        var jsonStr = line.substring(5).trim();
+                        if(jsonStr === '[DONE]') return;
+                        try{
+                            var j = JSON.parse(jsonStr);
+                            // 后端返回 {eventType: 1001, eventData: "文本"}
+                            if(j.eventType === 1001 && j.eventData){
+                                answer += j.eventData;
+                                bubble.textContent = answer;
+                                scrollDown();
+                            }
+                        }catch(e){}
+                    }
+                });
+                read();
+            }).catch(function(err){
+                if(err.name !== 'AbortError'){
+                    bubble.textContent = answer || '读取响应失败';
                 }
-            }
-            bubble.textContent=ans||'(空回复)';
-            if(currentSid&&sessionMap[currentSid])sessionMap[currentSid].msgs.push({role:'ai',text:ans||'(空回复)'});
-        }else{bubble.textContent='请求失败('+xhrChat.status+')'}
-        sending=false;btnSend.disabled=false;stopArea.style.display='none';xhrChat=null;
-    };
-    xhrChat.onerror=function(){bubble.textContent='网络错误';sending=false;btnSend.disabled=false;stopArea.style.display='none';xhrChat=null};
-    xhrChat.send(JSON.stringify({question:text,sessionId:currentSid||''}));
+                finishSend();
+            });
+        }
+        read();
+    }).catch(function(err){
+        if(err.name !== 'AbortError'){
+            bubble.textContent = '网络错误，请重试';
+        }
+        finishSend();
+    });
+
+    function finishSend(){
+        if(answer && currentSid && sessionMap[currentSid]){
+            sessionMap[currentSid].msgs.push({role:'ai', text:answer});
+        }else if(!answer && bubble){
+            bubble.textContent = '(空回复)';
+        }
+        sending=false;
+        btnSend.disabled=false;
+        stopArea.style.display='none';
+        abortController = null;
+    }
 }
 
 function stopChat(){
-    if(xhrChat){xhrChat.abort();xhrChat=null}
+    if(abortController){abortController.abort();abortController=null}
     sending=false;btnSend.disabled=false;stopArea.style.display='none';
 }
 
