@@ -1,6 +1,7 @@
 package com.itswy.paicodingai.service.impl;
 
 import com.itswy.paicodingai.config.SystemPromptConfig;
+import com.itswy.paicodingai.enums.AgentTypeEnum;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
 import com.itswy.paicodingai.service.ChatService;
 import com.itswy.paicodingai.vo.ChatEventVO;
@@ -19,8 +20,11 @@ import reactor.core.publisher.Flux;
  *
  *   前端发来 {question, sessionId}
  *       ↓
+ *   SystemPromptConfig.getSystemMessage(agentType)
+ *     → 读取 base.md + agents/xxx.md 拼装完整提示词
+ *       ↓
  *   chatClient.prompt()
- *       .system("你是技术派AI助手")   ← 告诉 AI 它是谁
+ *       .system(systemMessage)        ← 拼装好的提示词
  *       .user(question)               ← 用户的问题
  *       .stream().chatResponse()      ← 流式调用大模型
  *       ↓
@@ -41,19 +45,11 @@ public class ChatServiceImpl implements ChatService {
     /** Spring AI 的聊天客户端（在 SpringAIConfig 中配置） */
     private final ChatClient chatClient;
 
-    /** 系统提示词配置 */
+    /** 系统提示词配置（从 prompts/ 目录的 Markdown 文件读取） */
     private final SystemPromptConfig systemPromptConfig;
 
     /**
-     * =============================================================
-     * 流式对话（最重要的方法！！）
-     * =============================================================
-     *
-     * 做了这几件事：
-     *   1. 设置系统提示词 → 告诉 AI "你是谁"
-     *   2. 传用户问题 → AI 生成回复
-     *   3. 流式返回 → AI 一边生成一边推送
-     *   4. 结束标记 → 前端收到 STOP 关闭 loading
+     * 流式对话
      *
      * @param question  用户的问题
      * @param sessionId 会话ID
@@ -63,10 +59,14 @@ public class ChatServiceImpl implements ChatService {
     public Flux<ChatEventVO> chat(String question, String sessionId) {
         log.info("用户提问：{}，会话：{}", question, sessionId);
 
+        // 现在是单智能体阶段，固定用 GENERAL 类型
+        // 后续多智能体阶段，这里会改成：先调 RouteAgent 分析意图，再用对应的 AgentType
+        String agentType = AgentTypeEnum.GENERAL.getAgentName();
+
         return this.chatClient.prompt()
 
-                // ---- system prompt：告诉 AI 它的身份和任务 ----
-                .system(this.systemPromptConfig.getChatSystemMessage())
+                // ---- system prompt：从 prompts/ 目录读取拼装 ----
+                .system(this.systemPromptConfig.getSystemMessage(agentType))
 
                 // ---- user prompt：用户当前的提问 ----
                 .user(question)
@@ -90,8 +90,10 @@ public class ChatServiceImpl implements ChatService {
      */
     @Override
     public String chatText(String question) {
+        String agentType = AgentTypeEnum.GENERAL.getAgentName();
+
         return this.chatClient.prompt()
-                .system(this.systemPromptConfig.getChatSystemMessage())
+                .system(this.systemPromptConfig.getSystemMessage(agentType))
                 .user(question)
                 .call()
                 .content();
