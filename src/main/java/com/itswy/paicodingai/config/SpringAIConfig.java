@@ -66,12 +66,29 @@ public class SpringAIConfig {
      *
      * 支持不同模型的上下文窗口：
      * - DeepSeek: 1,048,576 tokens (1M)
-     - GPT-4: 128,000 tokens (128k)
+     * - GPT-4: 128,000 tokens (128k)
      * - Claude: 200,000 tokens (200k)
      */
     @Bean
     public TokenBudget tokenBudget() {
         return new TokenBudget();
+    }
+
+    /**
+     * Redis 短期记忆
+     *
+     * 使用 Redis List 存储，支持：
+     * - Token 预算管理
+     * - 自动淘汰最旧消息
+     * - 7天 TTL 过期
+     */
+    @Bean
+    public RedisConversationMemory shortTermMemory(
+            RedisUtils redisUtils,
+            ObjectMapper objectMapper,
+            TokenBudget tokenBudget) {
+        String defaultConversationId = "default";
+        return new RedisConversationMemory(redisUtils, objectMapper, defaultConversationId, tokenBudget.getAvailableForConversation());
     }
 
     /**

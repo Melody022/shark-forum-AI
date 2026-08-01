@@ -1,5 +1,8 @@
 package com.itswy.paicodingai.memory.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.Instant;
 import java.util.Map;
 
@@ -40,8 +43,13 @@ public class MemoryEntry {
     /**
      * 构造函数（指定时间戳）
      */
-    public MemoryEntry(String id, String content, MemoryType type, Instant timestamp,
-                       Map<String, String> metadata, int tokenCount) {
+    @JsonCreator
+    public MemoryEntry(@JsonProperty("id") String id,
+                       @JsonProperty("content") String content,
+                       @JsonProperty("type") MemoryType type,
+                       @JsonProperty("timestamp") Instant timestamp,
+                       @JsonProperty("metadata") Map<String, String> metadata,
+                       @JsonProperty("tokenCount") int tokenCount) {
         this.id = id;
         this.content = content;
         this.type = type;
