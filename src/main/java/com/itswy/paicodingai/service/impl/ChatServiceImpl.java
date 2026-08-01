@@ -8,93 +8,96 @@ import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * ==========================================================================
- * 流式对话实现（第一期核心！）
- * ==========================================================================
+ * 流式对话实现
  *
- * 核心数据流：
+ * 停止生成原理：
+ *   ConcurrentHashMap 存放 sessionId → "true" 表示正在生成
+ *   流式输出中 takeWhile 检查这个标记
+ *   用户点停止 → remove(sessionId) → takeWhile 检测到标记不存在 → 停止输出
  *
- *   前端发来 {question, sessionId}
- *       ↓
- *   SystemPromptConfig.getSystemMessage(agentType)
- *     → 读取 base.md + agents/xxx.md 拼装完整提示词
- *       ↓
- *   chatClient.prompt()
- *       .system(systemMessage)        ← 拼装好的提示词
- *       .user(question)               ← 用户的问题
- *       .stream().chatResponse()      ← 流式调用大模型
- *       ↓
- *   Flux<ChatEventVO>                  ← 每生成一段文字，发一个事件
- *       ↓
- *   前端以 SSE 接收，实现打字机效果
- *
- * @date 2026-07-18
+ * 第二期改进：
+ *   通过 ChatMemory 实现对话记忆
+ *   每次请求时传入 conversationId（sessionId）
+ *   Spring AI 自动加载历史消息并注入到 context 中
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
 
-    /** SSE 结束事件常量（type=1002，前端收到后关闭 loading） */
     public static final ChatEventVO STOP_EVENT = new ChatEventVO(null, ChatEventTypeEnum.STOP.getValue());
 
-    /** Spring AI 的聊天客户端（在 SpringAIConfig 中配置） */
     private final ChatClient chatClient;
-
-    /** 系统提示词配置（从 prompts/ 目录的 Markdown 文件读取） */
     private final SystemPromptConfig systemPromptConfig;
 
-    /**
-     * 流式对话
-     *
-     * @param question  用户的问题
-     * @param sessionId 会话ID
-     * @return 流式事件
-     */
+    /** 生成状态容器：sessionId → "true" 表示正在生成中 */
+    private static final ConcurrentHashMap<String, String> GENERATE_STATUS = new ConcurrentHashMap<>();
+
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
         log.info("用户提问：{}，会话：{}", question, sessionId);
 
-        // 现在是单智能体阶段，固定用 GENERAL 类型
-        // 后续多智能体阶段，这里会改成：先调 RouteAgent 分析意图，再用对应的 AgentType
         String agentType = AgentTypeEnum.GENERAL.getAgentName();
+        var outputBuilder = new StringBuilder();
 
         return this.chatClient.prompt()
-
-                // ---- system prompt：从 prompts/ 目录读取拼装 ----
                 .system(this.systemPromptConfig.getSystemMessage(agentType))
-
-                // ---- user prompt：用户当前的提问 ----
                 .user(question)
-
-                // ---- 流式调用 ----
+                // 【关键改进】传入 conversationId，让 ChatMemory 自动管理历史消息
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, sessionId))
                 .stream()
                 .chatResponse()
 
-                // ---- map：把 AI 每段回复转成 ChatEventVO ----
+                // 生成开始时，设置标记
+                .doFirst(() -> GENERATE_STATUS.put(sessionId, "true"))
+
+                // 异常时清理标记
+                .doOnError(throwable -> GENERATE_STATUS.remove(sessionId))
+
+                // 正常结束时清理标记
+                .doOnComplete(() -> GENERATE_STATUS.remove(sessionId))
+
+                // 用户取消时，保存已生成的内容（后续接会话记忆时用）
+                .doOnCancel(() -> {
+                    GENERATE_STATUS.remove(sessionId);
+                    log.info("用户取消生成：{}", sessionId);
+                })
+
+                // 每次生成一段后检查标记，标记被删除则停止
+                .takeWhile(response -> GENERATE_STATUS.get(sessionId) != null)
+
+                // 把 AI 每段回复转成 ChatEventVO
                 .map(chatResponse -> {
                     var text = chatResponse.getResult().getOutput().getText();
+                    outputBuilder.append(text);
                     return new ChatEventVO(text, ChatEventTypeEnum.DATA.getValue());
                 })
 
-                // ---- 追加结束标记 ----
+                // 追加结束标记
                 .concatWith(Flux.just(STOP_EVENT));
     }
 
-    /**
-     * 普通文本对话（非流式，一次性返回完整结果）
-     */
+    @Override
+    public void stop(String sessionId) {
+        GENERATE_STATUS.remove(sessionId);
+        log.info("停止生成：{}", sessionId);
+    }
+
     @Override
     public String chatText(String question) {
         String agentType = AgentTypeEnum.GENERAL.getAgentName();
-
         return this.chatClient.prompt()
                 .system(this.systemPromptConfig.getSystemMessage(agentType))
                 .user(question)
+                // 【非流式也支持记忆】
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "text-mode"))
                 .call()
                 .content();
     }

@@ -112,6 +112,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Nacos 配置中心客户端（提示词热更新，版本匹配服务端 2.5.3） -->
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+            <version>2.5.3</version>
+        </dependency>
+
         <!-- Jackson（JSON 处理） -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -121,6 +128,23 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
+
+        <!-- Redis 依赖（用于存储对话记忆） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Spring AI Redis Chat Memory - 已移除，使用自定义的RedisChatMemoryRepository -->
+        <!--
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-data-redis-chat-memory</artifactId>
+        </dependency>
+        -->
+
+        <!-- Redisson（分布式锁）- 已移除：3.23.0 不兼容 Spring Boot 4.x（RedisProperties 类路径变更） -->
+        <!-- 如需分布式锁，请升级到支持 Spring Boot 4.x 的 Redisson 版本 -->
 
     </dependencies>
 

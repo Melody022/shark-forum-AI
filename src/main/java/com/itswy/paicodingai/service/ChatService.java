@@ -4,14 +4,7 @@ import com.itswy.paicodingai.vo.ChatEventVO;
 import reactor.core.publisher.Flux;
 
 /**
- * ==========================================================================
  * 聊天服务接口
- * ==========================================================================
- *
- * 第一期：chat() + chatText()
- * 第二期：加 stop()
- *
- * @date 2026-07-18
  */
 public interface ChatService {
 
@@ -23,6 +16,11 @@ public interface ChatService {
      * 流式对话
      */
     Flux<ChatEventVO> chat(String question, String sessionId);
+
+    /**
+     * 停止 AI 生成
+     */
+    void stop(String sessionId);
 
     /**
      * 普通文本对话（非流式）

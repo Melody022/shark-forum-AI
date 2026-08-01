@@ -1,97 +1,146 @@
 package com.itswy.paicodingai.config;
 
+import com.alibaba.nacos.api.NacosFactory;
+import com.alibaba.nacos.api.config.ConfigService;
+import com.alibaba.nacos.api.config.listener.Listener;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StreamUtils;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
- * ==========================================================================
- * 系统提示词配置 —— 从 prompts/ 目录的 Markdown 文件读取
- * ==========================================================================
+ * 系统提示词配置 —— Nacos 热更新，失败降级读本地文件
  *
- * 提示词分层架构：
- *
- *   1. base.md —— 全局核心规则（所有智能体共享，不变）
- *   2. agents/xxx.md —— 每个智能体的专属规则
- *   3. skills/xxx.md —— 按需加载的 Skill（后续实现）
- *
- * 组装顺序（固定在前、动态在后，优化 LLM KV 缓存命中）：
- *   base.md + agents/xxx.md + skills/xxx.md + 历史消息 + 用户问题
- *
- * @date 2026-07-31
+ * 启动流程：
+ *   1. 尝试连接 Nacos，加载所有提示词到缓存
+ *   2. 注册 Listener，配置变更时自动更新缓存
+ *   3. Nacos 连接失败时，降级读 classpath/prompts/ 下的文件
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class SystemPromptConfig {
 
-    /** 全局核心规则（不变） */
-    private String basePrompt;
+    private final NacosProperties nacosProperties;
+    private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private ConfigService configService;
 
-    /** 各智能体的专属规则（按 AgentType 切换） */
-    private final Map<String, String> agentPrompts = new HashMap<>();
+    private static final String[] DATA_IDS = {
+            "base.md",
+            "agent-route",
+            "agent-general.md",
+            "agent-article.md",
+            "agent-konwledge.md"
+    };
 
-    /**
-     * 启动时加载所有提示词文件
-     * 文件在 classpath 的 prompts/ 目录下
-     */
+    /** agentType -> Nacos dataId 映射 */
+    private static final Map<String, String> AGENT_DATA_ID_MAP = Map.of(
+            "route", "agent-route",
+            "general", "agent-general.md",
+            "article", "agent-article.md",
+            "knowledge", "agent-konwledge.md"
+    );
+
+    /** Nacos dataId -> 本地 classpath 文件路径映射（降级用） */
+    private static final Map<String, String> LOCAL_PATH_MAP = Map.of(
+            "base.md", "prompts/base.md",
+            "agent-route", "prompts/agents/route.md",
+            "agent-general.md", "prompts/agents/general.md",
+            "agent-article.md", "prompts/agents/article.md",
+            "agent-konwledge.md", "prompts/agents/knowledge.md"
+    );
+
     @PostConstruct
     public void init() {
-        // 加载全局规则
-        basePrompt = loadFile("prompts/base.md");
-
-        // 加载各智能体的专属规则（文件名和 AgentTypeEnum 的 name 一致）
-        agentPrompts.put("ROUTE", loadFile("prompts/agents/route.md"));
-        agentPrompts.put("ARTICLE", loadFile("prompts/agents/article.md"));
-        agentPrompts.put("KNOWLEDGE", loadFile("prompts/agents/knowledge.md"));
-        agentPrompts.put("GENERAL", loadFile("prompts/agents/general.md"));
-
-        log.info("提示词加载完成：base + {} 个 Agent 专属规则", agentPrompts.size());
-    }
-
-    /**
-     * 获取完整的系统提示词
-     *
-     * 组装逻辑：base（不变） + agent 专属规则（按类型切换）
-     * 后续加 Skill 时，在中间插入 skills/xxx.md
-     *
-     * @param agentType 智能体类型（如 GENERAL、ARTICLE 等）
-     * @return 拼装后的完整 system prompt
-     */
-    public String getSystemMessage(String agentType) {
-        String agentPrompt = agentPrompts.getOrDefault(agentType, "");
-        return basePrompt + "\n" + agentPrompt;
-    }
-
-    /**
-     * 获取全局核心规则（某些场景只需要 base，不需要 agent 规则）
-     */
-    public String getBasePrompt() {
-        return basePrompt;
-    }
-
-    /**
-     * 从 classpath 读取文件内容
-     *
-     * @param path classpath 下的相对路径（如 "prompts/base.md"）
-     * @return 文件内容，读取失败返回空字符串
-     */
-    private String loadFile(String path) {
         try {
-            ClassPathResource resource = new ClassPathResource(path);
-            String content = StreamUtils.copyToString(
-                    resource.getInputStream(), StandardCharsets.UTF_8);
-            log.debug("加载提示词文件：{}", path);
-            return content;
-        } catch (IOException e) {
-            log.warn("提示词文件不存在或读取失败：{}", path);
-            return "";
+            Properties props = new Properties();
+            props.put("serverAddr", nacosProperties.getServerAddr());
+            // public 命名空间不能显式设置 namespace，否则 Nacos 2.x 会当作自定义命名空间查询
+            String ns = nacosProperties.getNamespace();
+            if (ns != null && !ns.isBlank()) {
+                props.put("namespace", ns);
+            }
+            log.info("Nacos 连接参数 => serverAddr: {}, namespace: [{}], group: {}",
+                    nacosProperties.getServerAddr(), ns, nacosProperties.getGroup());
+            configService = NacosFactory.createConfigService(props);
+
+            for (String dataId : DATA_IDS) {
+                loadFromNacos(dataId);
+            }
+            log.info("Nacos 提示词加载完成，缓存 {} 条", cache.size());
+        } catch (Exception e) {
+            log.warn("Nacos 连接失败({})，降级读本地文件", e.getMessage());
+            loadFromClasspath();
+        }
+    }
+
+    @PreDestroy
+    public void destroy() {
+        try { if (configService != null) configService.shutDown(); } catch (Exception ignored) {}
+    }
+
+    public String getSystemMessage(String agentType) {
+        String base = cache.getOrDefault("base.md", "");
+        String dataId = AGENT_DATA_ID_MAP.getOrDefault(agentType.toLowerCase(), "");
+        String agent = cache.getOrDefault(dataId, "");
+        return base + "\n" + agent;
+    }
+
+    private void loadFromNacos(String dataId) {
+        try {
+            String group = nacosProperties.getGroup();
+            String content = configService.getConfig(dataId, group, 5000);
+            if (content != null && !content.isEmpty()) {
+                cache.put(dataId, content);
+                log.info("Nacos 加载成功：{}", dataId);
+            } else {
+                log.warn("Nacos 返回空：{}，降级读本地", dataId);
+                loadFromClasspathSingle(dataId);
+            }
+
+            configService.addListener(dataId, group, new Listener() {
+                @Override
+                public Executor getExecutor() { return Executors.newSingleThreadExecutor(); }
+                @Override
+                public void receiveConfigInfo(String info) {
+                    if (info != null && !info.isEmpty()) {
+                        cache.put(dataId, info);
+                        log.info("提示词热更新：{}", dataId);
+                    }
+                }
+            });
+        } catch (Exception e) {
+            log.warn("Nacos 加载失败：{}，降级读本地", dataId);
+            loadFromClasspathSingle(dataId);
+        }
+    }
+
+    private void loadFromClasspath() {
+        for (String dataId : DATA_IDS) {
+            loadFromClasspathSingle(dataId);
+        }
+    }
+
+    private void loadFromClasspathSingle(String dataId) {
+        try {
+            String localPath = LOCAL_PATH_MAP.getOrDefault(dataId, "prompts/" + dataId);
+            var resource = new ClassPathResource(localPath);
+            if (resource.exists()) {
+                cache.put(dataId, StreamUtils.copyToString(
+                        resource.getInputStream(), StandardCharsets.UTF_8));
+            }
+        } catch (Exception e) {
+            log.warn("本地文件读取失败：{}", dataId);
         }
     }
 }

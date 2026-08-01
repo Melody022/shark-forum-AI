@@ -2,14 +2,17 @@ package com.itswy.paicodingai.controller;
 
 import com.itswy.paicodingai.config.SessionProperties;
 import com.itswy.paicodingai.service.ChatSessionService;
+import com.itswy.paicodingai.service.impl.ChatSessionServiceImpl;
 import com.itswy.paicodingai.vo.ChatSessionVO;
 import com.itswy.paicodingai.vo.SessionVO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * ==========================================================================
@@ -24,6 +27,7 @@ import java.util.Map;
 public class SessionController {
 
     private final ChatSessionService chatSessionService;
+    private final ChatSessionServiceImpl chatSessionServiceImpl;
     private final SessionProperties sessionProperties;
 
     /**
@@ -73,5 +77,47 @@ public class SessionController {
     public void updateTitle(@RequestParam("sessionId") String sessionId,
                             @RequestParam("title") String title) {
         this.chatSessionService.updateTitle(sessionId, title);
+    }
+
+    /**
+     * 查询会话的历史消息列表
+     * GET /session/history/messages?sessionId=xxx
+     *
+     * 返回格式：
+     * {
+     *   "messages": [
+     *     {"role": "user", "content": "Java怎么学？"},
+     *     {"role": "assistant", "content": "Java学习路线..."}
+     *   ],
+     *   "count": 2
+     * }
+     */
+    @GetMapping("/history/messages")
+    public Map<String, Object> getConversationHistory(
+            @RequestParam("sessionId") String sessionId) {
+
+        List<Message> messages = chatSessionServiceImpl.getConversationHistory(sessionId);
+
+        // 将 Message 对象转换为简单的 JSON 格式
+        List<Map<String, String>> messageList = messages.stream()
+                .map(msg -> Map.of(
+                    "role", msg.getMessageType().name().toLowerCase(),
+                    "content", msg.getText()
+                ))
+                .collect(Collectors.toList());
+
+        return Map.of(
+            "messages", messageList,
+            "count", messageList.size()
+        );
+    }
+
+    /**
+     * 清除会话的历史消息
+     * DELETE /session/history/messages?sessionId=xxx
+     */
+    @DeleteMapping("/history/messages")
+    public void clearConversationHistory(@RequestParam("sessionId") String sessionId) {
+        chatSessionServiceImpl.clearConversationHistory(sessionId);
     }
 }

@@ -12,6 +12,9 @@ import com.itswy.paicodingai.service.ChatSessionService;
 import com.itswy.paicodingai.vo.ChatSessionVO;
 import com.itswy.paicodingai.vo.SessionVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -26,15 +29,17 @@ import java.util.stream.Collectors;
  * ==========================================================================
  *
  * 第一期：createSession + queryBySessionId + queryHistorySession
- * 第二期：加 update + chatMemory 查询对话详情
+ * 第二期：加 update + chatMemory 查询对话详情 ✅ 已实现
  *
  * @date 2026-07-18
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatSession> implements ChatSessionService {
 
     private final SessionProperties sessionProperties;
+    private final ChatMemoryRepository chatMemoryRepository;
 
     /**
      * 创建新会话
@@ -117,9 +122,14 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
 
     @Override
     public void deleteHistorySession(String sessionId) {
+        // 删除数据库记录
         super.remove(com.baomidou.mybatisplus.core.toolkit.Wrappers.<ChatSession>lambdaQuery()
                 .eq(ChatSession::getSessionId, sessionId)
                 .eq(ChatSession::getUserId, 0L));
+
+        // 同时删除 Redis 中的对话记忆
+        chatMemoryRepository.deleteByConversationId(sessionId);
+        log.info("已删除会话及历史记忆: {}", sessionId);
     }
 
     @Override
@@ -129,5 +139,20 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
                 .eq(ChatSession::getSessionId, sessionId)
                 .eq(ChatSession::getUserId, 0L)
                 .update();
+    }
+
+    /**
+     * 查询会话的历史消息列表（从 Redis 读取）
+     */
+    public List<Message> getConversationHistory(String sessionId) {
+        return chatMemoryRepository.findByConversationId(sessionId);
+    }
+
+    /**
+     * 清除会话的历史消息
+     */
+    public void clearConversationHistory(String sessionId) {
+        chatMemoryRepository.deleteByConversationId(sessionId);
+        log.info("已清除会话历史: {}", sessionId);
     }
 }

@@ -71,7 +71,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .send-btn svg{width:15px;height:15px;fill:#fff}
 .send-btn:disabled{opacity:.5;cursor:not-allowed}
 /* ========== 停止按钮 ========== */
-.stop-area{text-align:center;padding:4px 0;background:#f5f7fb;display:none}
+.stop-area{text-align:center;padding:4px 0;background:#f5f7fb;display:none;min-height:32px;flex-shrink:0}
 .stop-btn{background:#fff;border:1px solid #e8ecf1;border-radius:12px;padding:4px 16px;font-size:12px;color:#999;cursor:pointer;transition:all .2s}
 .stop-btn:hover{color:#e74c3c;border-color:#e74c3c}
 </style>
@@ -262,7 +262,7 @@ function addMsg(role,text,save){
 function doSend(text){
     if(sending||!text)return;
     if(!currentSid){createSession(function(){doSend(text)});return}
-    sending=true;btnSend.disabled=true;stopArea.style.display='';
+    sending=true;btnSend.disabled=true;stopArea.style.display='block';
     addMsg('user',text,true);
     // AI 消息气泡（先显示"正在输入..."）
     var aiDiv=document.createElement('div');

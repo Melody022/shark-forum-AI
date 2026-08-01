@@ -16,6 +16,13 @@ spring:
     password:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: 0
+
   ai:
     openai:
       base-url: ${AI_BASE_URL:https://api.deepseek.com}
@@ -23,6 +30,9 @@ spring:
       chat:
         options:
           model: ${AI_MODEL:deepseek-chat}
+        memory:
+          redis:
+            enabled: true
 
 ai:
   session:
@@ -34,3 +44,31 @@ ai:
       - "如何入门Java编程？"
       - "Java和Python有什么区别？"
       - "Spring Boot怎么学？"
+
+  memory:
+    # Token预算管理配置
+    token-budget:
+      context-window: 1048576                 # DeepSeek 1M
+      reserved-for-system: 1000               # 系统提示词预留
+      reserved-for-tools: 2000                # 工具定义预留
+      reserved-for-response: 4000             # 回复预留
+      compression-threshold: 0.9              # 90%触发压缩
+
+    # 压缩器配置
+    compressor:
+      retain-recent-rounds: 3                 # 保留最近3轮
+      chunk-size: 5                           # Map阶段每片5条
+      max-tool-result-chars: 500              # 工具结果最大字符
+
+    # Redis存储配置
+    redis:
+      key-prefix: "chat:memory:"              # 会话记忆键前缀
+      lock-prefix: "chat:lock:"               # 分布式锁键前缀
+      token-prefix: "token:count:"            # Token统计键前缀
+      expire-days: 7                          # 过期天数
+      lock-timeout: 30000                     # 锁超时时间（毫秒）
+
+  nacos:
+    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+    namespace: ${NACOS_NAMESPACE:}
+    group: PAICODING_AI_PROMPT
