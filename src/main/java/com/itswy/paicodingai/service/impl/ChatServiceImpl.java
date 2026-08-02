@@ -3,6 +3,7 @@ package com.itswy.paicodingai.service.impl;
 import com.itswy.paicodingai.config.SystemPromptConfig;
 import com.itswy.paicodingai.enums.AgentTypeEnum;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
+import com.itswy.paicodingai.memory.util.RedisUtils;
 import com.itswy.paicodingai.service.ChatService;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
@@ -12,15 +13,20 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 流式对话实现
  *
  * 停止生成原理：
- *   ConcurrentHashMap 存放 sessionId → "true" 表示正在生成
+ *   Redis 存放 sessionId → "true" 表示正在生成
  *   流式输出中 takeWhile 检查这个标记
- *   用户点停止 → remove(sessionId) → takeWhile 检测到标记不存在 → 停止输出
+ *   用户点停止 → 删除标记 → takeWhile 检测到标记不存在 → 停止输出
+ *
+ * 为什么用Redis而不是ConcurrentHashMap：
+ *   1. 多实例部署时状态可共享
+ *   2. 支持TTL自动清理（防止内存泄漏）
+ *   3. 与天机学堂的实现保持一致
  *
  * 第二期改进：
  *   通过 ChatMemory 实现对话记忆
@@ -36,9 +42,13 @@ public class ChatServiceImpl implements ChatService {
 
     private final ChatClient chatClient;
     private final SystemPromptConfig systemPromptConfig;
+    private final RedisUtils redisUtils;
 
-    /** 生成状态容器：sessionId → "true" 表示正在生成中 */
-    private static final ConcurrentHashMap<String, String> GENERATE_STATUS = new ConcurrentHashMap<>();
+    /** 生成状态的Redis Key前缀 */
+    private static final String GENERATE_STATUS_KEY = "chat:generate:status:";
+
+    /** 状态保留时长（秒），防止异常时状态残留 */
+    private static final long STATUS_EXPIRE_SECONDS = 300; // 5分钟
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
@@ -55,23 +65,37 @@ public class ChatServiceImpl implements ChatService {
                 .stream()
                 .chatResponse()
 
-                // 生成开始时，设置标记
-                .doFirst(() -> GENERATE_STATUS.put(sessionId, "true"))
+                // 生成开始时，在Redis中设置标记
+                .doFirst(() -> {
+                    String key = GENERATE_STATUS_KEY + sessionId;
+                    redisUtils.opsForValue().set(key, "true", STATUS_EXPIRE_SECONDS, TimeUnit.SECONDS);
+                    log.debug("设置生成状态: sessionId={}", sessionId);
+                })
 
                 // 异常时清理标记
-                .doOnError(throwable -> GENERATE_STATUS.remove(sessionId))
+                .doOnError(throwable -> {
+                    clearGenerateStatus(sessionId);
+                    log.error("生成异常，清除状态: sessionId={}", sessionId, throwable);
+                })
 
                 // 正常结束时清理标记
-                .doOnComplete(() -> GENERATE_STATUS.remove(sessionId))
+                .doOnComplete(() -> {
+                    clearGenerateStatus(sessionId);
+                    log.debug("生成完成，清除状态: sessionId={}", sessionId);
+                })
 
-                // 用户取消时，保存已生成的内容（后续接会话记忆时用）
+                // 用户取消时，保存已生成的内容
                 .doOnCancel(() -> {
-                    GENERATE_STATUS.remove(sessionId);
+                    clearGenerateStatus(sessionId);
                     log.info("用户取消生成：{}", sessionId);
                 })
 
                 // 每次生成一段后检查标记，标记被删除则停止
-                .takeWhile(response -> GENERATE_STATUS.get(sessionId) != null)
+                .takeWhile(response -> {
+                    String key = GENERATE_STATUS_KEY + sessionId;
+                    String status = redisUtils.opsForValue().get(key);
+                    return status != null;
+                })
 
                 // 把 AI 每段回复转成 ChatEventVO
                 .map(chatResponse -> {
@@ -86,7 +110,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void stop(String sessionId) {
-        GENERATE_STATUS.remove(sessionId);
+        clearGenerateStatus(sessionId);
         log.info("停止生成：{}", sessionId);
     }
 
@@ -96,9 +120,16 @@ public class ChatServiceImpl implements ChatService {
         return this.chatClient.prompt()
                 .system(this.systemPromptConfig.getSystemMessage(agentType))
                 .user(question)
-                // 【非流式也支持记忆】
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "text-mode"))
                 .call()
                 .content();
+    }
+
+    /**
+     * 清除生成状态
+     */
+    private void clearGenerateStatus(String sessionId) {
+        String key = GENERATE_STATUS_KEY + sessionId;
+        redisUtils.delete(key);
     }
 }
