@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * 文章Agent
  *
- * 处理文章相关查询
+ * 处理文章相关查询，使用通用RAG功能
  */
 @Component
 public class ArticleAgent extends AbstractAgent {
@@ -21,6 +21,9 @@ public class ArticleAgent extends AbstractAgent {
                        ArticleTools articleTools) {
         super(chatClient, promptConfig);
         this.articleTools = articleTools;
+        // 启用RAG
+        this.enableRAG = true;
+        this.ragTopK = 3;
     }
 
     @Override
@@ -41,6 +44,7 @@ public class ArticleAgent extends AbstractAgent {
                "- queryArticleList：查询文章列表\n" +
                "- searchArticles：搜索文章\n" +
                "- queryHotArticles：查询热门文章\n" +
-               "请根据用户问题选择合适的工具。";
+               "请根据用户问题选择合适的工具。\n" +
+               "如果知识库中有相关参考资料，请结合参考资料回答。";
     }
 }

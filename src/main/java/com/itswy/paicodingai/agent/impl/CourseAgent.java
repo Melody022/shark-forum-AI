@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 /**
  * 教程Agent
  *
- * 处理教程课程相关查询
+ * 处理教程课程相关查询，使用通用RAG功能
  */
 @Component
 public class CourseAgent extends AbstractAgent {
@@ -21,6 +21,9 @@ public class CourseAgent extends AbstractAgent {
                       CourseTools courseTools) {
         super(chatClient, promptConfig);
         this.courseTools = courseTools;
+        // 启用RAG
+        this.enableRAG = true;
+        this.ragTopK = 3;
     }
 
     @Override
@@ -41,6 +44,7 @@ public class CourseAgent extends AbstractAgent {
                "- queryCourseList：查询教程列表\n" +
                "- searchCourses：搜索教程\n" +
                "- queryRecommendedCourses：查询推荐教程\n" +
-               "请根据用户问题选择合适的工具。";
+               "请根据用户问题选择合适的工具。\n" +
+               "如果知识库中有相关参考资料，请结合参考资料回答。";
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
  * 通用Agent
  *
  * 处理通用对话（问候、闲聊等）
+ * 不使用RAG，直接回复
  */
 @Component
 public class GeneralAgent extends AbstractAgent {
@@ -16,6 +17,8 @@ public class GeneralAgent extends AbstractAgent {
     public GeneralAgent(ChatClient chatClient,
                        SystemPromptConfig promptConfig) {
         super(chatClient, promptConfig);
+        // 通用对话不需要RAG
+        this.enableRAG = false;
     }
 
     @Override
