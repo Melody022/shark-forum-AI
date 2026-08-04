@@ -1,9 +1,10 @@
 package com.itswy.paicodingai.config;
 
-import com.itswy.paicodingai.memory.repository.RedisConversationMemory;
 import com.itswy.paicodingai.memory.service.TokenAwareChatMemory;
 import com.itswy.paicodingai.memory.service.TokenBudget;
 import com.itswy.paicodingai.memory.util.RedisUtils;
+import com.itswy.paicodingai.tools.ArticleTools;
+import com.itswy.paicodingai.tools.CourseTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -14,26 +15,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * ==========================================================================
  * Spring AI 配置 —— 创建 ChatClient
- * ==========================================================================
  *
- * 第一期：只配 ChatClient + 日志
- * 第二期：加 ChatMemory（对话记忆） ✅ 已实现
- * 第三期：加 RAG 知识库增强
- *
- * 设计决策：
- * - 不使用 MessageWindowChatMemory（固定消息数）
- * - 使用 TokenAwareChatMemory（基于Token预算）
- * - 支持不同模型的上下文窗口
- *
- * @date 2026-07-31
+ * 第三期改进：
+ * - 注册Tool Calling工具（ArticleTools、CourseTools）
+ * - 支持工具调用返回JSON数据
+ * - 前端根据数据渲染成卡片
  */
 @Configuration
 public class SpringAIConfig {
-
-    /** 记忆窗口大小（用于兼容旧代码，实际使用Token预算） */
-    private static final int MEMORY_WINDOW_SIZE = 20;
 
     /**
      * ChatClient —— AI 对话客户端（核心！）
@@ -41,15 +31,21 @@ public class SpringAIConfig {
      * @param chatModel Spring AI 自动注入的大模型
      * @param loggerAdvisor 日志记录器
      * @param memoryAdvisor 对话记忆顾问
+     * @param articleTools 文章工具
+     * @param courseTools 教程工具
      */
     @Bean
     public ChatClient chatClient(
             ChatModel chatModel,
             Advisor loggerAdvisor,
-            Advisor memoryAdvisor) {
+            Advisor memoryAdvisor,
+            ArticleTools articleTools,
+            CourseTools courseTools) {
         return ChatClient.builder(chatModel)
                 .defaultAdvisors(loggerAdvisor)
-                .defaultAdvisors(memoryAdvisor)  // 添加记忆顾问
+                .defaultAdvisors(memoryAdvisor)
+                // ★ 注册Tool Calling工具
+                .defaultTools(articleTools, courseTools)
                 .build();
     }
 
@@ -72,23 +68,6 @@ public class SpringAIConfig {
     @Bean
     public TokenBudget tokenBudget() {
         return new TokenBudget();
-    }
-
-    /**
-     * Redis 短期记忆
-     *
-     * 使用 Redis List 存储，支持：
-     * - Token 预算管理
-     * - 自动淘汰最旧消息
-     * - 7天 TTL 过期
-     */
-    @Bean
-    public RedisConversationMemory shortTermMemory(
-            RedisUtils redisUtils,
-            ObjectMapper objectMapper,
-            TokenBudget tokenBudget) {
-        String defaultConversationId = "default";
-        return new RedisConversationMemory(redisUtils, objectMapper, defaultConversationId, tokenBudget.getAvailableForConversation());
     }
 
     /**

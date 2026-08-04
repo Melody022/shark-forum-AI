@@ -57,7 +57,7 @@ public class TokenAwareChatMemory implements ChatMemory {
      * @param conversationId 会话ID
      * @return RedisConversationMemory实例
      */
-    private RedisConversationMemory getOrCreateMemory(String conversationId) {
+    public RedisConversationMemory getOrCreateMemory(String conversationId) {
         return memoryMap.computeIfAbsent(conversationId, id -> {
             log.debug("创建新的会话记忆: conversationId={}", id);
             return new RedisConversationMemory(

@@ -5,13 +5,21 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.core.env.Environment;
 
 import java.net.InetAddress;
 
+/**
+ * paicoding-ai 启动类
+ *
+ * 启用Feign：支持通过HTTP调用其他微服务（paicoding）
+ * 配合Nacos实现服务发现和负载均衡
+ */
 @Slf4j
 @SpringBootApplication
 @MapperScan("com.itswy.paicodingai.mapper")
+@EnableFeignClients  // ★ 启用Feign客户端，用于调用paicoding微服务
 public class PaicodingAiApplication {
 
     public static void main(String[] args) throws Exception {

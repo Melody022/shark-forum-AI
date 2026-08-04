@@ -5,6 +5,7 @@ import com.itswy.paicodingai.enums.AgentTypeEnum;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
 import com.itswy.paicodingai.memory.util.RedisUtils;
 import com.itswy.paicodingai.service.ChatService;
+import com.itswy.paicodingai.tools.ToolResultHolder;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -23,15 +25,12 @@ import java.util.concurrent.TimeUnit;
  *   流式输出中 takeWhile 检查这个标记
  *   用户点停止 → 删除标记 → takeWhile 检测到标记不存在 → 停止输出
  *
- * 为什么用Redis而不是ConcurrentHashMap：
- *   1. 多实例部署时状态可共享
- *   2. 支持TTL自动清理（防止内存泄漏）
- *   3. 与天机学堂的实现保持一致
- *
- * 第二期改进：
- *   通过 ChatMemory 实现对话记忆
- *   每次请求时传入 conversationId（sessionId）
- *   Spring AI 自动加载历史消息并注入到 context 中
+ * Tool Calling原理：
+ *   1. ChatClient注册了ArticleTools和CourseTools
+ *   2. LLM决定调用哪个工具，Spring AI自动执行
+ *   3. 工具结果存储到ToolResultHolder
+ *   4. 流式输出结束后，返回PARAM事件（包含工具调用结果）
+ *   5. 前端接收PARAM事件，根据JSON数据渲染成卡片
  */
 @Slf4j
 @Service
@@ -56,12 +55,15 @@ public class ChatServiceImpl implements ChatService {
 
         String agentType = AgentTypeEnum.GENERAL.getAgentName();
         var outputBuilder = new StringBuilder();
+        var requestId = generateRequestId();
 
         return this.chatClient.prompt()
                 .system(this.systemPromptConfig.getSystemMessage(agentType))
                 .user(question)
                 // 【关键改进】传入 conversationId，让 ChatMemory 自动管理历史消息
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, sessionId))
+                // 【Tool Calling】传递requestId到工具上下文
+                .toolContext(Map.of("requestId", requestId))
                 .stream()
                 .chatResponse()
 
@@ -101,11 +103,35 @@ public class ChatServiceImpl implements ChatService {
                 .map(chatResponse -> {
                     var text = chatResponse.getResult().getOutput().getText();
                     outputBuilder.append(text);
-                    return new ChatEventVO(text, ChatEventTypeEnum.DATA.getValue());
+
+                    // 检查是否有工具调用
+                    var finishReason = chatResponse.getResult().getMetadata().getFinishReason();
+                    if ("stop".equals(finishReason)) {
+                        // 将消息ID与请求ID关联，用于后续获取工具调用结果
+                        var messageId = chatResponse.getMetadata().getId();
+                        ToolResultHolder.put(messageId, "requestId", requestId);
+                        log.debug("工具调用完成: messageId={}, requestId={}", messageId, requestId);
+                    }
+
+                    return ChatEventVO.data(text);  // ★ 使用静态工厂方法创建DATA事件
                 })
 
-                // 追加结束标记
-                .concatWith(Flux.just(STOP_EVENT));
+                // ★ 关键：流式输出结束后，返回工具调用结果（PARAM事件）
+                .concatWith(Flux.defer(() -> {
+                    var result = ToolResultHolder.get(requestId);
+                    if (result != null && !result.isEmpty()) {
+                        // 有工具调用结果，返回PARAM事件
+                        ToolResultHolder.remove(requestId);
+                        log.info("返回工具调用结果: requestId={}, keys={}", requestId, result.keySet());
+
+                        return Flux.just(
+                                ChatEventVO.param(result),  // ★ 使用静态工厂方法
+                                STOP_EVENT
+                        );
+                    }
+                    // 没有工具调用结果，直接返回STOP
+                    return Flux.just(STOP_EVENT);
+                }));
     }
 
     @Override
@@ -131,5 +157,12 @@ public class ChatServiceImpl implements ChatService {
     private void clearGenerateStatus(String sessionId) {
         String key = GENERATE_STATUS_KEY + sessionId;
         redisUtils.delete(key);
+    }
+
+    /**
+     * 生成请求ID
+     */
+    private String generateRequestId() {
+        return java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 }

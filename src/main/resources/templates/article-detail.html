@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${article.title} ?: '文章详情'">文章详情</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .meta {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+            line-height: 1.8;
+            font-size: 16px;
+            color: #333;
+        }
+        .content p {
+            margin-bottom: 16px;
+        }
+        .summary {
+            background: #f8fafc;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            margin: 20px 30px;
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+            color: #666;
+        }
+        .back-btn {
+            display: inline-block;
+            margin: 20px 30px 30px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .back-btn:hover {
+            transform: translateY(-2px);
+        }
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #ef4444;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" th:if="${error}">
+        <div class="error">
+            <p th:text="${error}">错误信息</p>
+            <a href="javascript:history.back()" class="back-btn">返回</a>
+        </div>
+    </div>
+    <div class="container" th:unless="${error}">
+        <div class="header">
+            <h1 th:text="${article.title}">文章标题</h1>
+            <div class="meta">
+                <span th:if="${article.author}">👤 作者: <span th:text="${article.author}">作者</span></span>
+                <span th:if="${article.category}">📁 分类: <span th:text="${article.category}">分类</span></span>
+                <span th:if="${article.publishTime}">📅 时间: <span th:text="${article.publishTime}">时间</span></span>
+            </div>
+        </div>
+        <div class="summary" th:if="${article.summary}">
+            <p th:text="${article.summary}">文章摘要</p>
+        </div>
+        <div class="content">
+            <p th:if="${article.content}" th:utext="${#strings.replace(article.content, '&#10;', '&lt;br&gt;')}">文章内容</p>
+            <p th:unless="${article.content}" style="color: #999; font-style: italic;">暂无内容</p>
+        </div>
+        <a href="javascript:history.back()" class="back-btn">← 返回上一页</a>
+    </div>
+</body>
+</html>

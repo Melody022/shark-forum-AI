@@ -31,7 +31,7 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class SystemPromptConfig {
 
-    private final NacosProperties nacosProperties;
+    private final PromptNacosProperties nacosProperties;
     private final Map<String, String> cache = new ConcurrentHashMap<>();
     private ConfigService configService;
 

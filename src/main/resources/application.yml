@@ -11,7 +11,7 @@ spring:
     active: dev
 
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/paicoding_ai?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://127.0.0.1:3306/pai_coding?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
     username: root
     password:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -23,6 +23,11 @@ spring:
       password: ${REDIS_PASSWORD:}
       database: 0
 
+  elasticsearch:
+    uris: ${ES_URIS:http://localhost:9200}
+    username: ${ES_USERNAME:}
+    password: ${ES_PASSWORD:}
+
   ai:
     openai:
       base-url: ${AI_BASE_URL:https://api.deepseek.com}
@@ -33,6 +38,14 @@ spring:
         memory:
           redis:
             enabled: true
+
+  # Spring Cloud Nacos - 服务注册与发现（用于Feign调用paicoding）
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:}
+        enabled: true  # 启用服务发现
 
 ai:
   session:
@@ -72,3 +85,11 @@ ai:
     server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
     namespace: ${NACOS_NAMESPACE:}
     group: PAICODING_AI_PROMPT
+
+# paicoding提示词配置（用于SystemPromptConfig读取）
+paicoding:
+  ai:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      namespace: ${NACOS_NAMESPACE:}
+      group: PAICODING_AI_PROMPT

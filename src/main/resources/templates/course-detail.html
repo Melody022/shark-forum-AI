@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${course.name} ?: '教程详情'">教程详情</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            padding: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .meta {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            opacity: 0.9;
+            flex-wrap: wrap;
+        }
+        .meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cover {
+            width: 100%;
+            max-height: 400px;
+            object-fit: cover;
+            display: block;
+        }
+        .content {
+            padding: 30px;
+            line-height: 1.8;
+            font-size: 16px;
+            color: #333;
+        }
+        .description {
+            background: #f0fdf4;
+            padding: 20px;
+            border-left: 4px solid #10b981;
+            margin: 20px 30px;
+            border-radius: 0 8px 8px 0;
+            font-size: 15px;
+            color: #166534;
+        }
+        .back-btn {
+            display: inline-block;
+            margin: 20px 30px 30px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .back-btn:hover {
+            transform: translateY(-2px);
+        }
+        .error {
+            text-align: center;
+            padding: 40px;
+            color: #ef4444;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" th:if="${error}">
+        <div class="error">
+            <p th:text="${error}">错误信息</p>
+            <a href="javascript:history.back()" class="back-btn">返回</a>
+        </div>
+    </div>
+    <div class="container" th:unless="${error}">
+        <div class="header">
+            <h1>📚 <span th:text="${course.name}">教程名称</span></h1>
+            <div class="meta">
+                <span th:if="${course.authorName}">👤 作者: <span th:text="${course.authorName}">作者</span></span>
+                <span th:if="${course.publishTime}">📅 发布时间: <span th:text="${course.publishTime}">时间</span></span>
+            </div>
+        </div>
+        <img th:if="${course.coverUrl}" th:src="${course.coverUrl}" alt="教程封面" class="cover"/>
+        <div class="description" th:if="${course.description}">
+            <p th:text="${course.description}">教程简介</p>
+        </div>
+        <div class="content">
+            <p>这是一个教程专栏，包含系列文章和学习资源。</p>
+            <p>点击下方按钮返回继续浏览。</p>
+        </div>
+        <a href="javascript:history.back()" class="back-btn">← 返回上一页</a>
+    </div>
+</body>
+</html>

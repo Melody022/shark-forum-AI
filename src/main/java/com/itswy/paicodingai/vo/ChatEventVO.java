@@ -72,4 +72,12 @@ public class ChatEventVO {
     public static ChatEventVO stop() {
         return new ChatEventVO(null, ChatEventTypeEnum.STOP.getValue());
     }
+
+    /**
+     * 快速创建一个 PARAM 事件（工具调用结果）
+     * @param data 工具返回的数据
+     */
+    public static ChatEventVO param(Object data) {
+        return new ChatEventVO(data, ChatEventTypeEnum.PARAM.getValue());
+    }
 }

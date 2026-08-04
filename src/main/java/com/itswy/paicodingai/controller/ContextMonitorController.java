@@ -60,8 +60,8 @@ public class ContextMonitorController {
         stats.put("cachedInputTokens", tokenBudget.getTotalCachedInputTokens());
         stats.put("compressionThreshold", tokenBudget.getCompressionThreshold());
 
-        // 记忆条目分类统计
-        List<MemoryEntry> allEntries = memoryManager.getAll();
+        // 记忆条目分类统计（使用默认会话）
+        List<MemoryEntry> allEntries = memoryManager.getAll("default");
         Map<String, Integer> typeBreakdown = new LinkedHashMap<>();
         for (MemoryEntry entry : allEntries) {
             String typeName = entry.getType().name().toLowerCase();

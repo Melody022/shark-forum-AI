@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Java面向对象编程基础",
+    "category": "Java",
+    "content": "面向对象编程(OOP)是一种编程范式，它使用\"对象\"来设计软件。对象是类的实例，类定义了对象的属性和行为。Java是一种纯粹的面向对象语言，所有代码都必须在类中。\n\nOOP有四大特性：\n1. 封装：将数据和操作数据的方法绑定在一起，隐藏内部实现细节\n2. 继承：子类继承父类的属性和方法，实现代码复用\n3. 多态：同一方法在不同对象中有不同的实现\n4. 抽象：提取共同特征，忽略非本质细节\n\n面向对象的设计原则包括SOLID原则：\n- 单一职责原则：一个类只负责一项职责\n- 开闭原则：对扩展开放，对修改关闭\n- 里氏替换原则：子类可以替换父类\n- 接口隔离原则：使用多个专门的接口\n- 依赖倒置原则：依赖抽象而非具体"
+  },
+  {
+    "title": "Spring Boot快速入门",
+    "category": "Spring",
+    "content": "Spring Boot是Spring框架的扩展，它简化了Spring应用的创建和开发。Spring Boot提供了自动配置、起步依赖、内嵌服务器等特性。\n\n核心特性：\n1. 自动配置：根据项目依赖自动配置Spring应用\n2. 起步依赖：简化Maven/Gradle依赖管理\n3. 内嵌服务器：内置Tomcat、Jetty等服务器\n4. Actuator：提供生产就绪特性，如健康检查、指标监控\n\n快速创建Spring Boot项目：\n1. 使用Spring Initializr（start.spring.io）\n2. 选择项目类型（Maven/Gradle）\n3. 选择Spring Boot版本\n4. 添加依赖（Web、JPA、MySQL等）\n5. 生成项目并导入IDE\n\n项目结构：\nsrc/main/java/     源代码\nsrc/main/resources/ 配置文件\nsrc/test/java/     测试代码\npom.xml           Maven配置"
+  },
+  {
+    "title": "MySQL数据库基础",
+    "category": "数据库",
+    "content": "MySQL是最流行的关系型数据库管理系统之一，广泛应用于Web应用开发。\n\n基本概念：\n- 数据库（Database）：存储数据的容器\n- 表（Table）：数据库中的数据以表的形式组织\n- 行（Row）：表中的一条记录\n- 列（Column）：表中的一个字段\n\nSQL语句分类：\n1. DDL（数据定义语言）：CREATE、ALTER、DROP\n2. DML（数据操作语言）：INSERT、UPDATE、DELETE\n3. DQL（数据查询语言）：SELECT\n4. DCL（数据控制语言）：GRANT、REVOKE\n\n常用数据类型：\n- INT：整数\n- VARCHAR：字符串\n- DATE/DATETIME：日期时间\n- DECIMAL：精确小数\n- TEXT：长文本\n\n索引优化：\n- 主键索引：PRIMARY KEY\n- 唯一索引：UNIQUE\n- 普通索引：INDEX\n- 全文索引：FULLTEXT\n\n事务特性（ACID）：\n- 原子性（Atomicity）\n- 一致性（Consistency）\n- 隔离性（Isolation）\n- 持久性（Durability）"
+  },
+  {
+    "title": "Redis缓存使用指南",
+    "category": "Redis",
+    "content": "Redis是开源的内存数据结构存储系统，可用作数据库、缓存和消息中间件。\n\n数据结构：\n1. String：字符串，最简单的类型\n2. List：列表，有序的字符串列表\n3. Set：集合，无序的字符串集合\n4. Hash：哈希，键值对的集合\n5. Sorted Set：有序集合，带分数的集合\n\n常用命令：\n- String：SET key value、GET key\n- List：LPUSH、RPUSH、LPOP、RPOP\n- Set：SADD、SMEMBERS、SINTER\n- Hash：HSET、HGET、HGETALL\n- Sorted Set：ZADD、ZRANGE、ZSCORE\n\n缓存策略：\n- 缓存穿透：查询不存在的数据，布隆过滤器\n- 缓存击穿：热点数据过期，互斥锁\n- 缓存雪崩：大量缓存同时过期，随机过期时间\n\n过期策略：\n- 惰性删除：访问时检查是否过期\n- 定期删除：定时检查并删除过期数据\n- 内存淘汰：LRU、LFU、随机等\n\n应用场景：\n- 会话缓存\n- 排行榜\n- 计数器\n- 消息队列\n- 分布式锁"
+  },
+  {
+    "title": "微服务架构设计",
+    "category": "架构",
+    "content": "微服务架构是一种将应用拆分为小型、独立服务的架构风格。每个服务运行在自己的进程中，通过轻量级机制（如HTTP/REST）通信。\n\n核心概念：\n1. 服务拆分：按业务能力划分服务\n2. 服务治理：服务注册、发现、负载均衡\n3. 服务通信：REST、gRPC、消息队列\n4. 服务容错：熔断、降级、限流\n\nSpring Cloud组件：\n- 服务注册：Nacos、Eureka、Consul\n- 配置中心：Nacos Config、Spring Cloud Config\n- 网关：Spring Cloud Gateway、Zuul\n- 负载均衡：LoadBalancer、Ribbon\n- 熔断降级：Sentinel、Hystrix\n- 链路追踪：Sleuth、Zipkin\n\n微服务优势：\n- 独立部署\n- 技术多样性\n- 按需扩展\n- 故障隔离\n\n微服务挑战：\n- 分布式复杂性\n- 数据一致性\n- 服务间通信\n- 运维成本\n\n最佳实践：\n- 单一职责\n- 服务自治\n- 去中心化治理\n- 基础设施自动化"
+  },
+  {
+    "title": "Elasticsearch全文检索",
+    "category": "搜索",
+    "content": "Elasticsearch是开源的分布式搜索和分析引擎，基于Apache Lucene构建。\n\n核心概念：\n- Index（索引）：类似数据库的表\n- Document（文档）：索引中的基本单位\n- Field（字段）：文档中的属性\n- Mapping（映射）：定义文档结构\n\n倒排索引：\n将文档中的词项映射到包含该词项的文档列表。\n例如：\n文档1：\"Java编程\"\n文档2：\"Python编程\"\n倒排索引：\nJava → [文档1]\nPython → [文档2]\n编程 → [文档1, 文档2]\n\n查询类型：\n1. Match：全文检索\n2. Term：精确匹配\n3. Range：范围查询\n4. Bool：布尔组合\n5. KNN：向量检索\n\n分词器：\n- Standard：标准分词器\n- Simple：简单分词器\n- Whitespace：空格分词器\n- IK：中文分词器（ik_smart, ik_max_word）\n\n性能优化：\n- 合理设置分片数\n- 使用合适的分词器\n- 控制字段数量\n- 使用过滤器缓存\n\n应用场景：\n- 全文检索\n- 日志分析\n- 应用搜索\n- 推荐系统"
+  },
+  {
+    "title": "Docker容器技术",
+    "category": "DevOps",
+    "content": "Docker是开源的容器化平台，用于自动化应用程序的部署、扩展和管理。\n\n核心概念：\n- 镜像（Image）：只读模板，包含运行应用所需的一切\n- 容器（Container）：镜像的运行实例\n- 仓库（Registry）：存储镜像的服务\n- Dockerfile：构建镜像的脚本\n\n常用命令：\n- 镜像：docker build、docker pull、docker push\n- 容器：docker run、docker start、docker stop\n- 网络：docker network create、docker network connect\n- 数据卷：docker volume create、docker volume mount\n\nDockerfile示例：\nFROM openjdk:17-jdk-slim\nWORKDIR /app\nCOPY target/*.jar app.jar\nEXPOSE 8080\nENTRYPOINT [\"java\", \"-jar\", \"app.jar\"]\n\nDocker Compose：\n定义和运行多容器应用的工具\nversion: '3'\nservices:\n  app:\n    build: .\n    ports:\n      - \"8080:8080\"\n  db:\n    image: mysql:8.0\n    environment:\n      MYSQL_ROOT_PASSWORD: root\n\n优势：\n- 环境一致性\n- 快速部署\n- 资源隔离\n- 易于扩展\n\n编排工具：\n- Docker Compose：单机编排\n- Kubernetes（K8s）：集群编排\n- Docker Swarm：Docker原生编排"
+  },
+  {
+    "title": "Git版本控制",
+    "category": "工具",
+    "content": "Git是分布式版本控制系统，用于跟踪代码变更和协作开发。\n\n基本概念：\n- 仓库（Repository）：存储代码和历史的地方\n- 分支（Branch）：独立的开发线\n- 提交（Commit）：保存的代码快照\n- 合并（Merge）：将分支合并到主线\n\n常用命令：\n- 初始化：git init\n- 克隆：git clone <url>\n- 状态：git status\n- 添加：git add <file>\n- 提交：git commit -m \"message\"\n- 推送：git push origin <branch>\n- 拉取：git pull origin <branch>\n- 分支：git branch、git checkout\n- 合并：git merge\n\n分支策略：\n- Git Flow：主分支 + 开发分支 + 功能分支\n- GitHub Flow：主分支 + 功能分支\n- GitLab Flow：主分支 + 环境分支\n\n冲突解决：\n1. 拉取最新代码\n2. 解决冲突\n3. 标记为已解决\n4. 提交合并\n\n最佳实践：\n- 频繁提交\n- 写清晰的提交信息\n- 使用分支开发\n- 代码审查\n- 自动化测试"
+  }
+]
