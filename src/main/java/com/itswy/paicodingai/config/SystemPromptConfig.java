@@ -40,6 +40,7 @@ public class SystemPromptConfig {
             "agent-route",
             "agent-general.md",
             "agent-article.md",
+            "agent-course.md",
             "agent-konwledge.md"
     };
 
@@ -48,6 +49,7 @@ public class SystemPromptConfig {
             "route", "agent-route",
             "general", "agent-general.md",
             "article", "agent-article.md",
+            "course", "agent-course.md",
             "knowledge", "agent-konwledge.md"
     );
 
@@ -57,15 +59,20 @@ public class SystemPromptConfig {
             "agent-route", "prompts/agents/route.md",
             "agent-general.md", "prompts/agents/general.md",
             "agent-article.md", "prompts/agents/article.md",
+            "agent-course.md", "prompts/agents/course.md",
             "agent-konwledge.md", "prompts/agents/knowledge.md"
     );
 
     @PostConstruct
     public void init() {
+        // 直接加载本地文件（跳过Nacos）
+        loadFromClasspath();
+        log.info("本地提示词加载完成，缓存 {} 条", cache.size());
+
+        // 尝试连接Nacos（可选）
         try {
             Properties props = new Properties();
             props.put("serverAddr", nacosProperties.getServerAddr());
-            // public 命名空间不能显式设置 namespace，否则 Nacos 2.x 会当作自定义命名空间查询
             String ns = nacosProperties.getNamespace();
             if (ns != null && !ns.isBlank()) {
                 props.put("namespace", ns);
@@ -79,8 +86,7 @@ public class SystemPromptConfig {
             }
             log.info("Nacos 提示词加载完成，缓存 {} 条", cache.size());
         } catch (Exception e) {
-            log.warn("Nacos 连接失败({})，降级读本地文件", e.getMessage());
-            loadFromClasspath();
+            log.warn("Nacos 连接失败({})，继续使用本地文件", e.getMessage());
         }
     }
 
@@ -104,8 +110,7 @@ public class SystemPromptConfig {
                 cache.put(dataId, content);
                 log.info("Nacos 加载成功：{}", dataId);
             } else {
-                log.warn("Nacos 返回空：{}，降级读本地", dataId);
-                loadFromClasspathSingle(dataId);
+                log.warn("Nacos 返回空：{}，使用已缓存的本地文件", dataId);
             }
 
             configService.addListener(dataId, group, new Listener() {
@@ -120,8 +125,7 @@ public class SystemPromptConfig {
                 }
             });
         } catch (Exception e) {
-            log.warn("Nacos 加载失败：{}，降级读本地", dataId);
-            loadFromClasspathSingle(dataId);
+            log.warn("Nacos 加载失败：{}，使用已缓存的本地文件", dataId);
         }
     }
 

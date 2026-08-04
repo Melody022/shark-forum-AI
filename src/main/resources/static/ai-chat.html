@@ -182,18 +182,29 @@ body{font-family:var(--font);background:#f8fafc;min-height:100vh;color:var(--tex
 .ctx-refresh{cursor:pointer;color:var(--text-muted);font-size:13px;padding:3px 5px;border-radius:5px;transition:all .15s}
 .ctx-refresh:hover{color:var(--accent-light);background:var(--accent-glow)}
 
-/* ===== Sidebar (history) ===== */
-.w-sidebar{position:absolute;top:0;left:0;width:100%;height:100%;background:var(--bg-primary);z-index:10;display:none;flex-direction:column}
-.w-sidebar.open{display:flex}
-.w-sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.w-sidebar-header h4{font-size:13px;font-weight:600}
-.w-sidebar-close{cursor:pointer;color:var(--text-muted);font-size:14px;padding:3px;transition:color .15s}
-.w-sidebar-close:hover{color:var(--text-primary)}
-.w-sidebar-list{flex:1;overflow-y:auto;padding:8px}
-.sidebar-item{padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;color:var(--text-secondary);transition:all .12s;margin-bottom:2px;border:1px solid transparent}
+/* ===== Sidebar (history) - Full page view ===== */
+.w-history-view{display:none;flex-direction:column;height:100%;overflow:hidden}
+.w-history-view.open{display:flex}
+.w-history-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.w-history-header h4{font-size:13px;font-weight:600}
+.w-history-list{flex:1;overflow-y:auto;padding:8px}
+.sidebar-group-title{font-size:11px;font-weight:600;color:var(--text-muted);padding:8px 12px 4px;text-transform:uppercase;letter-spacing:.5px}
+.sidebar-item{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:12px;color:var(--text-secondary);transition:all .12s;margin-bottom:2px;border:1px solid transparent}
 .sidebar-item:hover{background:var(--bg-hover);color:var(--text-primary)}
 .sidebar-item.active{background:var(--accent-glow);border-color:rgba(99,102,241,.3);color:var(--accent-light)}
+.sidebar-item-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-item-actions{display:none;gap:4px;margin-left:8px}
+.sidebar-item:hover .sidebar-item-actions{display:flex}
+.sidebar-action-btn{width:22px;height:22px;border:none;background:transparent;cursor:pointer;font-size:10px;border-radius:4px;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.sidebar-action-btn:hover{background:var(--bg-tertiary)}
+.sidebar-edit-input{width:100%;padding:2px 4px;border:1px solid var(--accent);border-radius:4px;font-size:12px;outline:none}
 .sidebar-empty{padding:30px 16px;text-align:center;color:var(--text-muted);font-size:12px}
+
+/* Chat View & History View */
+.w-view{flex:1;display:none;flex-direction:column;overflow:hidden}
+.w-view.active{display:flex}
+.w-history-view{display:none;flex-direction:column;height:100%;overflow:hidden}
+.w-history-view.open{display:flex}
 
 /* Demo background */
 .demo-bg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#333;font-size:14px;user-select:none}
@@ -267,14 +278,18 @@ body{font-family:var(--font);background:#f8fafc;min-height:100vh;color:var(--tex
     </div>
   </div>
 
+  <!-- History View (full page) -->
+  <div class="w-history-view" id="historyView">
+    <div class="w-history-header">
+      <h4>历史对话</h4>
+      <button class="w-btn" id="backToChatBtn" title="返回">✕</button>
+    </div>
+    <div class="w-history-list" id="historyList">
+      <div class="sidebar-empty" id="emptyTip">暂无历史对话</div>
+    </div>
   </div>
 
-  <!-- Sidebar (history overlay) -->
-  <div class="w-sidebar" id="wSidebar">
-    <div class="w-sidebar-header"><h4>历史对话</h4><span class="w-sidebar-close" id="closeSidebar">✕</span></div>
-    <div class="w-sidebar-list" id="sidebarList"><div class="sidebar-empty" id="emptyTip">暂无历史对话</div></div>
   </div>
-</div>
 
 <script>
 // ==================== State ====================
@@ -288,8 +303,9 @@ var fab=document.getElementById('fab'),widget=document.getElementById('widget'),
     stopArea=document.getElementById('stopArea'),stopBtn=document.getElementById('stopBtn'),
     titleText=document.getElementById('titleText'),newBtn=document.getElementById('newBtn'),
     closeBtn=document.getElementById('closeBtn'),historyBtn=document.getElementById('historyBtn'),
-    wSidebar=document.getElementById('wSidebar'),sidebarList=document.getElementById('sidebarList'),
-    emptyTip=document.getElementById('emptyTip'),closeSidebar=document.getElementById('closeSidebar'),
+    chatView=document.getElementById('chatView'),historyView=document.getElementById('historyView'),
+    historyList=document.getElementById('historyList'),backToChatBtn=document.getElementById('backToChatBtn'),
+    emptyTip=document.getElementById('emptyTip'),
     ctxPanel=document.getElementById('ctxPanel'),ctxToggle=document.getElementById('ctxToggle'),
     ctxContent=document.getElementById('ctxContent'),ctxInner=document.getElementById('ctxInner'),
     ctxToggleValue=document.getElementById('ctxToggleValue'),ctxArrow=document.getElementById('ctxArrow');
@@ -441,11 +457,191 @@ function fetchExamples(cb){var xhr=new XMLHttpRequest();xhr.open('GET','/session
 function renderHot(cb){fetchExamples(function(ex){hotList.innerHTML='';ex.forEach(function(q){var el=document.createElement('span');el.className='hot-q';el.textContent=q;el.onclick=function(){txtInput.value=q;doSend(q)};hotList.appendChild(el)});if(cb)cb()})}
 switchHot.onclick=function(){renderHot()};
 
+// ==================== History Sessions ====================
+function loadHistorySessions(){
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET','/session/history',true);
+  xhr.onload=function(){
+    if(xhr.status===200){
+      try{
+        var data=JSON.parse(xhr.responseText);
+        renderHistoryList(data);
+      }catch(e){
+        console.error('解析历史会话失败',e);
+      }
+    }
+  };
+  xhr.send();
+}
+
+function renderHistoryList(groupedSessions){
+  historyList.innerHTML='';
+  var hasSessions=false;
+
+  // 按分组渲染
+  var groups=['今天','最近30天','更早'];
+  groups.forEach(function(groupName){
+    var sessions=groupedSessions[groupName];
+    if(!sessions||sessions.length===0)return;
+    hasSessions=true;
+
+    // 分组标题
+    var groupTitle=document.createElement('div');
+    groupTitle.className='sidebar-group-title';
+    groupTitle.textContent=groupName;
+    historyList.appendChild(groupTitle);
+
+    // 会话列表
+    sessions.forEach(function(session){
+      var item=document.createElement('div');
+      item.className='sidebar-item'+(session.sessionId===currentSid?' active':'');
+      item.setAttribute('data-sid',session.sessionId);
+
+      var titleSpan=document.createElement('span');
+      titleSpan.className='sidebar-item-title';
+      titleSpan.textContent=session.title||'新对话';
+
+      var actionsDiv=document.createElement('div');
+      actionsDiv.className='sidebar-item-actions';
+
+      var editBtn=document.createElement('button');
+      editBtn.className='sidebar-action-btn';
+      editBtn.textContent='✏️';
+      editBtn.title='编辑标题';
+      editBtn.onclick=function(e){
+        e.stopPropagation();
+        editSessionTitle(session.sessionId,titleSpan);
+      };
+
+      var deleteBtn=document.createElement('button');
+      deleteBtn.className='sidebar-action-btn';
+      deleteBtn.textContent='🗑️';
+      deleteBtn.title='删除';
+      deleteBtn.onclick=function(e){
+        e.stopPropagation();
+        deleteSession(session.sessionId);
+      };
+
+      actionsDiv.appendChild(editBtn);
+      actionsDiv.appendChild(deleteBtn);
+      item.appendChild(titleSpan);
+      item.appendChild(actionsDiv);
+
+      item.onclick=function(){
+        loadSessionMessages(session.sessionId,session.title);
+      };
+
+      historyList.appendChild(item);
+    });
+  });
+
+  if(!hasSessions){
+    historyList.appendChild(emptyTip);
+  }
+}
+
+function loadSessionMessages(sessionId,title){
+  // 切换到该会话
+  currentSid=sessionId;
+  titleText.textContent=title||'新对话';
+  msgBox.innerHTML='';
+  welcome.style.display='none';
+  stopArea.style.display='none';
+
+  // 返回聊天页面
+  historyView.classList.remove('open');
+  chatView.classList.add('active');
+
+  // 从后端加载历史消息
+  var xhr=new XMLHttpRequest();
+  xhr.open('GET','/session/history/messages?sessionId='+encodeURIComponent(sessionId),true);
+  xhr.onload=function(){
+    if(xhr.status===200){
+      try{
+        var data=JSON.parse(xhr.responseText);
+        var messages=data.messages||[];
+        messages.forEach(function(msg){
+          if(msg.role==='user'){
+            addMsg('user',msg.content,false);
+          }else if(msg.role==='assistant'){
+            addMsg('ai',msg.content,false);
+          }
+        });
+        scrollDown();
+      }catch(e){
+        console.error('加载历史消息失败',e);
+      }
+    }
+  };
+  xhr.send();
+}
+
+function editSessionTitle(sessionId,titleSpan){
+  var currentTitle=titleSpan.textContent;
+  var input=document.createElement('input');
+  input.type='text';
+  input.value=currentTitle;
+  input.className='sidebar-edit-input';
+  input.style.cssText='width:100%;padding:2px 4px;border:1px solid var(--accent);border-radius:4px;font-size:12px;';
+
+  titleSpan.style.display='none';
+  titleSpan.parentNode.insertBefore(input,titleSpan);
+  input.focus();
+  input.select();
+
+  function saveTitle(){
+    var newTitle=input.value.trim()||currentTitle;
+    titleSpan.textContent=newTitle;
+    titleSpan.style.display='';
+    input.remove();
+
+    // 调用后端API更新标题
+    var xhr=new XMLHttpRequest();
+    xhr.open('PUT','/session/history?sessionId='+encodeURIComponent(sessionId)+'&title='+encodeURIComponent(newTitle),true);
+    xhr.send();
+
+    // 如果是当前会话，更新标题
+    if(sessionId===currentSid){
+      titleText.textContent=newTitle;
+    }
+  }
+
+  input.onblur=saveTitle;
+  input.onkeydown=function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      saveTitle();
+    }else if(e.key==='Escape'){
+      titleSpan.style.display='';
+      input.remove();
+    }
+  };
+}
+
+function deleteSession(sessionId){
+  if(!confirm('确定要删除这个对话吗？'))return;
+
+  // 调用后端API删除
+  var xhr=new XMLHttpRequest();
+  xhr.open('DELETE','/session/history?sessionId='+encodeURIComponent(sessionId),true);
+  xhr.onload=function(){
+    if(xhr.status===200){
+      // 如果删除的是当前会话，创建新会话
+      if(sessionId===currentSid){
+        newConversation();
+      }
+      // 重新加载历史列表
+      loadHistorySessions();
+    }
+  };
+  xhr.send();
+}
+
 // ==================== Session ====================
 function createSession(cb){var xhr=new XMLHttpRequest();xhr.open('POST','/session?n=3',true);xhr.onload=function(){if(xhr.status===200){try{var o=JSON.parse(xhr.responseText);if(o&&o.sessionId){currentSid=o.sessionId;sessionMap[currentSid]={title:'新对话',msgs:[]};sessionOrder.unshift(currentSid);titleText.textContent='新对话';updateSidebar();if(cb)cb(currentSid)}}catch(e){}}};xhr.send()}
-function newConversation(){stopChat();sending=false;btnSend.disabled=false;msgBox.innerHTML='';welcome.style.display='';renderHot();msgBox.appendChild(welcome);createSession(function(){});stopArea.style.display='none'}
-function switchConversation(sid){if(sending)stopChat();currentSid=sid;titleText.textContent=sessionMap[sid].title;msgBox.innerHTML='';welcome.style.display='none';stopArea.style.display='none';sessionMap[sid].msgs.forEach(function(m){addMsg(m.role,m.text,false)});updateSidebar();wSidebar.classList.remove('open')}
-function updateSidebar(){emptyTip.style.display=sessionOrder.length?'none':'';sidebarList.innerHTML='';if(!sessionOrder.length){sidebarList.appendChild(emptyTip);return}sessionOrder.forEach(function(sid){var d=document.createElement('div');d.className='sidebar-item'+(sid===currentSid?' active':'');d.textContent=sessionMap[sid].title;d.onclick=function(){switchConversation(sid)};sidebarList.appendChild(d)})}
+function newConversation(){stopChat();sending=false;btnSend.disabled=false;msgBox.innerHTML='';welcome.style.display='';renderHot();msgBox.appendChild(welcome);createSession(function(){});stopArea.style.display='none';historyView.classList.remove('open');chatView.classList.add('active')}
+function switchConversation(sid){if(sending)stopChat();currentSid=sid;titleText.textContent=sessionMap[sid].title;msgBox.innerHTML='';welcome.style.display='none';stopArea.style.display='none';sessionMap[sid].msgs.forEach(function(m){addMsg(m.role,m.text,false)});historyView.classList.remove('open');chatView.classList.add('active')}
+function updateSidebar(){emptyTip.style.display=sessionOrder.length?'none':'';historyList.innerHTML='';if(!sessionOrder.length){historyList.appendChild(emptyTip);return}sessionOrder.forEach(function(sid){var d=document.createElement('div');d.className='sidebar-item'+(sid===currentSid?' active':'');d.textContent=sessionMap[sid].title;d.onclick=function(){switchConversation(sid)};historyList.appendChild(d)})}
 
 // ==================== Messages ====================
 function addMsg(role,text,save){
@@ -486,8 +682,17 @@ txtInput.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault
 txtInput.oninput=function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,64)+'px'};
 stopBtn.onclick=stopChat;
 newBtn.onclick=function(){if(sending)stopChat();newConversation()};
-historyBtn.onclick=function(){wSidebar.classList.toggle('open')};
-closeSidebar.onclick=function(){wSidebar.classList.remove('open')};
+historyBtn.onclick=function(){
+  // 切换到历史对话页面
+  chatView.classList.remove('active');
+  historyView.classList.add('open');
+  loadHistorySessions();
+};
+backToChatBtn.onclick=function(){
+  // 返回聊天页面
+  historyView.classList.remove('open');
+  chatView.classList.add('active');
+};
 
 // ==================== Init ====================
 renderHot();

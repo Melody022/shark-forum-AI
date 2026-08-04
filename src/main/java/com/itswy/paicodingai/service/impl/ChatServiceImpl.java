@@ -7,6 +7,7 @@ import com.itswy.paicodingai.enums.AgentTypeEnum;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
 import com.itswy.paicodingai.memory.util.RedisUtils;
 import com.itswy.paicodingai.service.ChatService;
+import com.itswy.paicodingai.service.ChatSessionService;
 import com.itswy.paicodingai.tools.ToolResultHolder;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class ChatServiceImpl implements ChatService {
     private final SystemPromptConfig systemPromptConfig;
     private final RedisUtils redisUtils;
     private final RouteAgent routeAgent;
+    private final ChatSessionService chatSessionService;
 
     /** 生成状态的Redis Key前缀 */
     private static final String GENERATE_STATUS_KEY = "chat:generate:status:";
@@ -59,6 +61,10 @@ public class ChatServiceImpl implements ChatService {
             .sessionId(sessionId)
             .requestId(requestId)
             .build();
+
+        // 更新会话标题（取问题前20个字符）
+        String title = question.length() > 20 ? question.substring(0, 20) + "..." : question;
+        chatSessionService.update(sessionId, title, 0L);
 
         return routeAgent.route(question, ctx)
             // 生成开始时，在Redis中设置标记
