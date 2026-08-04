@@ -368,6 +368,26 @@ function likeArticle(id) { alert('点赞文章：' + id); }
 function collectCourse(id) { alert('收藏教程：' + id); }
 function showCourseDetail(id) { window.open('/course/' + id, '_blank'); }
 
+// 显示路由提示
+function showRouteHint(data) {
+    var targetAgent = data.targetAgent || '未知';
+    var reason = data.reason || '';
+    var agentName = '';
+
+    if (targetAgent === 'ArticleAgent') {
+        agentName = '📄 文章助手';
+    } else if (targetAgent === 'CourseAgent') {
+        agentName = '📚 教程助手';
+    } else if (targetAgent === 'KnowledgeAgent') {
+        agentName = '🧠 知识库助手';
+    } else {
+        agentName = '🤖 通用助手';
+    }
+
+    // 显示路由提示（可选：显示在聊天气泡中或作为系统消息）
+    console.log('路由决策: ' + agentName + ' - ' + reason);
+}
+
 // ==================== Context Monitor ====================
 function formatTokens(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'k';return''+n}
 
@@ -453,7 +473,7 @@ function doSend(text){
   .then(function(res){
     if(!res.ok){bubble.textContent='请求失败('+res.status+')';finishSend();return}
     var reader=res.body.getReader(),decoder=new TextDecoder(),buffer='';
-    function read(){reader.read().then(function(r){if(r.done){finishSend();return}buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();lines.forEach(function(line){if(line.startsWith('data:')){var js=line.substring(5).trim();if(js==='[DONE]')return;try{var j=JSON.parse(js);if(j.eventType===1001&&j.eventData){answer+=j.eventData;bubble.textContent=answer;scrollDown()}else if(j.eventType===1003&&j.eventData){renderToolResult(j.eventData)}}catch(e){}}});read()}).catch(function(err){if(err.name!=='AbortError')bubble.textContent=answer||'读取失败';finishSend()})}
+    function read(){reader.read().then(function(r){if(r.done){finishSend();return}buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();lines.forEach(function(line){if(line.startsWith('data:')){var js=line.substring(5).trim();if(js==='[DONE]')return;try{var j=JSON.parse(js);if(j.eventType===1001&&j.eventData){answer+=j.eventData;bubble.textContent=answer;scrollDown()}else if(j.eventType===1003&&j.eventData){renderToolResult(j.eventData)}else if(j.eventType===1004&&j.eventData){showRouteHint(j.eventData)}}catch(e){}}});read()}).catch(function(err){if(err.name!=='AbortError')bubble.textContent=answer||'读取失败';finishSend()})}
     read();
   }).catch(function(err){if(err.name!=='AbortError')bubble.textContent='网络错误';finishSend()});
   function finishSend(){if(answer&&currentSid&&sessionMap[currentSid])sessionMap[currentSid].msgs.push({role:'ai',text:answer});else if(!answer&&bubble)bubble.textContent='(空回复)';sending=false;btnSend.disabled=false;stopArea.style.display='none';abortController=null;fetchContext()}

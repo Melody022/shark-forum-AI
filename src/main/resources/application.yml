@@ -38,6 +38,11 @@ spring:
         memory:
           redis:
             enabled: true
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${DASHSCOPE_API_KEY:}
+        options:
+          model: text-embedding-v4
 
   # Spring Cloud Nacos - 服务注册与发现（用于Feign调用paicoding）
   cloud:

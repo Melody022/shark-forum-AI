@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库管理 - AI助手</title>
+    <style>
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5a67d8;
+            --success: #48bb78;
+            --danger: #f56565;
+            --warning: #ed8936;
+            --bg: #f7fafc;
+            --card-bg: #ffffff;
+            --text: #2d3748;
+            --text-light: #718096;
+            --border: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #38a169;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .document-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .document-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px;
+            background: var(--bg);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+
+        .document-item:hover {
+            background: #edf2f7;
+        }
+
+        .document-info {
+            flex: 1;
+        }
+
+        .document-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .document-meta {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .document-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        .badge-primary {
+            background: rgba(102, 126, 234, 0.1);
+            color: var(--primary);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            flex: 1;
+        }
+
+        .result-box {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-light);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-light);
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast-success {
+            background: var(--success);
+        }
+
+        .toast-error {
+            background: var(--danger);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-light);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 知识库管理</h1>
+            <p>管理AI助手的知识库文档，支持添加、编辑、删除和搜索文档</p>
+        </div>
+
+        <div class="grid">
+            <!-- 左侧：添加文档 -->
+            <div class="card">
+                <h2>📝 添加文档</h2>
+                <form id="addForm">
+                    <div class="form-group">
+                        <label>文档标题</label>
+                        <input type="text" id="title" placeholder="输入文档标题" required>
+                    </div>
+                    <div class="form-group">
+                        <label>分类</label>
+                        <select id="category">
+                            <option value="Java">Java</option>
+                            <option value="Spring">Spring</option>
+                            <option value="数据库">数据库</option>
+                            <option value="前端">前端</option>
+                            <option value="架构">架构</option>
+                            <option value="通用">通用</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>文档内容</label>
+                        <textarea id="content" placeholder="输入文档内容..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">➕ 添加文档</button>
+                </form>
+
+                <!-- 搜索测试 -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+                    <h2>🔍 搜索测试</h2>
+                    <div class="search-box">
+                        <input type="text" id="searchQuery" placeholder="输入搜索内容...">
+                        <button class="btn btn-success" onclick="searchDocuments()">搜索</button>
+                    </div>
+                    <div id="searchResult" class="result-box" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- 右侧：文档列表 -->
+            <div class="card">
+                <h2>📋 文档列表</h2>
+                <div id="documentList" class="document-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑文档</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="editForm">
+                <input type="hidden" id="editId">
+                <div class="form-group">
+                    <label>文档标题</label>
+                    <input type="text" id="editTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <select id="editCategory">
+                        <option value="Java">Java</option>
+                        <option value="Spring">Spring</option>
+                        <option value="数据库">数据库</option>
+                        <option value="前端">前端</option>
+                        <option value="架构">架构</option>
+                        <option value="通用">通用</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>文档内容</label>
+                    <textarea id="editContent" required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 页面加载时获取文档列表
+        document.addEventListener('DOMContentLoaded', loadDocuments);
+
+        // 添加文档
+        document.getElementById('addForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            addDocument();
+        });
+
+        // 编辑文档
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            updateDocument();
+        });
+
+        // 加载文档列表
+        function loadDocuments() {
+            fetch('/knowledge/list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderDocuments(data.data);
+                    } else {
+                        showToast('加载失败: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('加载失败:', error);
+                    showToast('加载失败', 'error');
+                });
+        }
+
+        // 渲染文档列表
+        function renderDocuments(documents) {
+            const list = document.getElementById('documentList');
+
+            if (!documents || documents.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div>📭</div>
+                        <p>暂无文档，请添加知识库文档</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = documents.map(doc => `
+                <div class="document-item">
+                    <div class="document-info">
+                        <div class="document-title">${doc.metadata.title || '未命名'}</div>
+                        <div class="document-meta">
+                            <span class="badge badge-primary">${doc.metadata.category || '未分类'}</span>
+                            <span style="margin-left: 8px;">${doc.metadata.chunkCount || 0} 个片段</span>
+                        </div>
+                    </div>
+                    <div class="document-actions">
+                        <button class="btn btn-primary btn-sm" onclick="editDocument('${doc.id}')">编辑</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteDocument('${doc.id}')">删除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 添加文档
+        function addDocument() {
+            const title = document.getElementById('title').value;
+            const content = document.getElementById('content').value;
+            const category = document.getElementById('category').value;
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('content', content);
+            formData.append('category', category);
+
+            fetch('/knowledge/add', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('文档添加成功！', 'success');
+                    document.getElementById('addForm').reset();
+                    loadDocuments();
+                } else {
+                    showToast('添加失败: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('添加失败:', error);
+                showToast('添加失败', 'error');
+            });
+        }
+
+        // 编辑文档
+        function editDocument(id) {
+            // 获取文档详情
+            fetch(`/knowledge/detail/${id}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('editId').value = id;
+                        document.getElementById('editTitle').value = data.data.title;
+                        document.getElementById('editCategory').value = data.data.category;
+                        document.getElementById('editContent').value = data.data.content;
+                        document.getElementById('editModal').classList.add('show');
+                    } else {
+                        showToast('获取文档详情失败', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('获取详情失败:', error);
+                    showToast('获取详情失败', 'error');
+                });
+        }
+
+        // 更新文档
+        function updateDocument() {
+            const id = document.getElementById('editId').value;
+            const title = document.getElementById('editTitle').value;
+            const content = document.getElementById('editContent').value;
+            const category = document.getElementById('editCategory').value;
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('content', content);
+            formData.append('category', category);
+
+            fetch(`/knowledge/update/${id}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('文档更新成功！', 'success');
+                    closeModal();
+                    loadDocuments();
+                } else {
+                    showToast('更新失败: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('更新失败:', error);
+                showToast('更新失败', 'error');
+            });
+        }
+
+        // 删除文档
+        function deleteDocument(id) {
+            if (!confirm('确定要删除这个文档吗？')) {
+                return;
+            }
+
+            fetch(`/knowledge/delete/${id}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('文档删除成功！', 'success');
+                    loadDocuments();
+                } else {
+                    showToast('删除失败: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('删除失败:', error);
+                showToast('删除失败', 'error');
+            });
+        }
+
+        // 搜索文档
+        function searchDocuments() {
+            const query = document.getElementById('searchQuery').value;
+            if (!query) {
+                showToast('请输入搜索内容', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('query', query);
+            formData.append('topK', '5');
+
+            fetch('/knowledge/search', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('searchResult');
+                if (data.success && data.data.length > 0) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = data.data.map(doc => `
+                        <div class="result-item">
+                            <strong>${doc.metadata.title || '未命名'}</strong>
+                            <p>${doc.text}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = '<p style="color: var(--text-light);">未找到相关文档</p>';
+                }
+            })
+            .catch(error => {
+                console.error('搜索失败:', error);
+                showToast('搜索失败', 'error');
+            });
+        }
+
+        // 关闭弹窗
+        function closeModal() {
+            document.getElementById('editModal').classList.remove('show');
+        }
+
+        // 显示提示
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 package com.itswy.paicodingai.vo;
 
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
+import java.util.Map;
 
 /**
  * ==========================================================================
@@ -79,5 +80,17 @@ public class ChatEventVO {
      */
     public static ChatEventVO param(Object data) {
         return new ChatEventVO(data, ChatEventTypeEnum.PARAM.getValue());
+    }
+
+    /**
+     * 快速创建一个 ROUTE 事件（路由决策）
+     * @param targetAgent 目标Agent名称
+     * @param reason 路由原因
+     */
+    public static ChatEventVO route(String targetAgent, String reason) {
+        return new ChatEventVO(
+            Map.of("targetAgent", targetAgent, "reason", reason),
+            ChatEventTypeEnum.ROUTE.getValue()
+        );
     }
 }
