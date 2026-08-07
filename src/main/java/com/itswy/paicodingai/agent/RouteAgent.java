@@ -1,5 +1,7 @@
 package com.itswy.paicodingai.agent;
 
+import com.itswy.paicodingai.skill.Skill;
+import com.itswy.paicodingai.skill.SkillRegistry;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +26,7 @@ public class RouteAgent {
 
     private final ChatClient chatClient;
     private final List<Agent> agents;
+    private final SkillRegistry skillRegistry;
 
     private static final String ROUTE_PROMPT = """
 你是一个智能路由助手，负责准确识别用户意图并返回对应的Agent名称。
@@ -170,10 +173,16 @@ public class RouteAgent {
         IntentResult intent = recognizeIntent(question, ctx.getSessionId());
         log.info("意图识别结果: targetAgent={}, reason={}", intent.targetAgent, intent.reason);
 
-        // 2. 发送路由事件
+        // 2. 查找对应的Skill
+        Skill skill = findSkillForAgent(intent.targetAgent);
+        if (skill != null) {
+            log.info("找到Skill: {}", skill.getName());
+        }
+
+        // 3. 发送路由事件
         ChatEventVO routeEvent = ChatEventVO.route(intent.targetAgent, intent.reason);
 
-        // 3. 获取目标Agent
+        // 4. 获取目标Agent
         Agent targetAgent = findAgent(intent.targetAgent);
         if (targetAgent == null) {
             log.warn("未找到Agent: {}，使用GeneralAgent", intent.targetAgent);
@@ -181,8 +190,28 @@ public class RouteAgent {
         }
 
         Agent finalAgent = targetAgent;
+        Skill finalSkill = skill;
         return Flux.just(routeEvent)
-                   .concatWith(finalAgent.chat(question, ctx));
+                   .concatWith(finalAgent.chat(question, ctx, finalSkill));
+    }
+
+    /**
+     * 根据Agent名称查找对应的Skill
+     */
+    private Skill findSkillForAgent(String agentName) {
+        // Agent名称到Skill名称的映射
+        Map<String, String> agentSkillMap = Map.of(
+                "ArticleAgent", "article-recommend",
+                "CourseAgent", "course-recommend",
+                "KnowledgeAgent", "knowledge-qa",
+                "GeneralAgent", "general-chat"
+        );
+
+        String skillName = agentSkillMap.get(agentName);
+        if (skillName != null) {
+            return skillRegistry.findSkill(skillName);
+        }
+        return null;
     }
 
     /**

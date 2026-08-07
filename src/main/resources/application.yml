@@ -44,6 +44,17 @@ spring:
         options:
           model: text-embedding-v4
 
+    # MCP配置（Model Context Protocol）
+    mcp:
+      enabled: true  # 启用MCP
+      servers:
+        local-tools:
+          type: local
+          tools:
+            - search
+            - getCurrentTime
+            - calculate
+
   # Spring Cloud Nacos - 服务注册与发现（用于Feign调用paicoding）
   cloud:
     nacos:

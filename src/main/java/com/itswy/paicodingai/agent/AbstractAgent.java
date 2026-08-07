@@ -2,6 +2,7 @@ package com.itswy.paicodingai.agent;
 
 import com.itswy.paicodingai.config.SystemPromptConfig;
 import com.itswy.paicodingai.rag.service.KnowledgeService;
+import com.itswy.paicodingai.skill.Skill;
 import com.itswy.paicodingai.tools.ToolResultHolder;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import org.springframework.ai.chat.client.ChatClient;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
  * 参考天机学堂实现：
  * - 提供通用的流式对话逻辑
  * - 支持RAG增强（通用功能）
+ * - 支持Skill增强（技能上下文注入）
  * - 支持advisors()方法配置额外的Advisor
  */
 public abstract class AbstractAgent implements Agent {
@@ -59,20 +61,26 @@ public abstract class AbstractAgent implements Agent {
 
     @Override
     public Flux<ChatEventVO> chat(String question, AgentContext ctx) {
-        return doChat(question, getSystemPrompt(), ctx);
+        return doChat(question, getSystemPrompt(), ctx, null);
+    }
+
+    @Override
+    public Flux<ChatEventVO> chat(String question, AgentContext ctx, Skill skill) {
+        return doChat(question, getSystemPrompt(), ctx, skill);
     }
 
     /**
-     * 通用流式对话逻辑（支持RAG）
+     * 通用流式对话逻辑（支持RAG和Skill）
      *
      * 参考天机学堂实现：
      * - 自动从知识库检索相关文档
      * - 将检索到的文档作为上下文
+     * - 将Skill的body注入到系统提示词
      * - 支持额外的Advisors
      */
-    protected Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx) {
-        // 1. 构建系统提示词（包含RAG上下文）
-        String finalSystemPrompt = buildSystemPromptWithRAG(question, systemPrompt);
+    protected Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx, Skill skill) {
+        // 1. 构建系统提示词（包含RAG上下文和Skill）
+        String finalSystemPrompt = buildSystemPromptWithRAGAndSkill(question, systemPrompt, skill);
 
         // 2. 构建Advisors列表
         List<Advisor> advisors = extraAdvisors();
@@ -97,11 +105,19 @@ public abstract class AbstractAgent implements Agent {
     }
 
     /**
-     * 构建带RAG上下文的系统提示词
+     * 构建带RAG上下文和Skill的系统提示词
      */
-    private String buildSystemPromptWithRAG(String question, String systemPrompt) {
+    private String buildSystemPromptWithRAGAndSkill(String question, String systemPrompt, Skill skill) {
+        String finalPrompt = systemPrompt;
+
+        // 1. 添加Skill上下文（如果有）
+        if (skill != null && skill.getBody() != null && !skill.getBody().isBlank()) {
+            finalPrompt = finalPrompt + "\n\n## 技能指南\n" + skill.getBody();
+        }
+
+        // 2. 添加RAG上下文（如果启用）
         if (!enableRAG || knowledgeService == null) {
-            return systemPrompt;
+            return finalPrompt;
         }
 
         try {
@@ -109,7 +125,7 @@ public abstract class AbstractAgent implements Agent {
             List<Document> documents = knowledgeService.search(question, ragTopK);
 
             if (documents.isEmpty()) {
-                return systemPrompt;
+                return finalPrompt;
             }
 
             // 构建上下文
@@ -118,11 +134,11 @@ public abstract class AbstractAgent implements Agent {
                 .collect(Collectors.joining("\n---\n"));
 
             // 将上下文添加到系统提示词
-            return systemPrompt + "\n\n参考资料：\n" + context;
+            return finalPrompt + "\n\n参考资料：\n" + context;
 
         } catch (Exception e) {
             // RAG失败时降级为普通模式
-            return systemPrompt;
+            return finalPrompt;
         }
     }
 

@@ -3,6 +3,7 @@ package com.itswy.paicodingai.config;
 import com.itswy.paicodingai.memory.service.TokenAwareChatMemory;
 import com.itswy.paicodingai.memory.service.TokenBudget;
 import com.itswy.paicodingai.memory.util.RedisUtils;
+import com.itswy.paicodingai.mcp.tools.SimpleSearchTool;
 import com.itswy.paicodingai.tools.ArticleTools;
 import com.itswy.paicodingai.tools.CourseTools;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +22,9 @@ import org.springframework.context.annotation.Configuration;
  * - 注册Tool Calling工具（ArticleTools、CourseTools）
  * - 支持工具调用返回JSON数据
  * - 前端根据数据渲染成卡片
+ *
+ * 第八期改进：
+ * - 添加MCP工具（SimpleSearchTool）
  */
 @Configuration
 public class SpringAIConfig {
@@ -33,6 +37,7 @@ public class SpringAIConfig {
      * @param memoryAdvisor 对话记忆顾问
      * @param articleTools 文章工具
      * @param courseTools 教程工具
+     * @param simpleSearchTool 搜索工具（MCP）
      */
     @Bean
     public ChatClient chatClient(
@@ -40,12 +45,13 @@ public class SpringAIConfig {
             Advisor loggerAdvisor,
             Advisor memoryAdvisor,
             ArticleTools articleTools,
-            CourseTools courseTools) {
+            CourseTools courseTools,
+            SimpleSearchTool simpleSearchTool) {
         return ChatClient.builder(chatModel)
                 .defaultAdvisors(loggerAdvisor)
                 .defaultAdvisors(memoryAdvisor)
-                // ★ 注册Tool Calling工具
-                .defaultTools(articleTools, courseTools)
+                // ★ 注册Tool Calling工具（Article、Course、MCP）
+                .defaultTools(articleTools, courseTools, simpleSearchTool)
                 .build();
     }
 
