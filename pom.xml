@@ -217,6 +217,20 @@
             <version>portable-1.8.4</version>
         </dependency>
 
+        <!-- Apache PDFBox（PDF解析） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
+        <!-- Apache POI（Word/Excel解析） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
         <!-- Jackson for JSON -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
