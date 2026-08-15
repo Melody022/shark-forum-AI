@@ -1,0 +1,111 @@
+# Badcase配置
+# 明确Skill的适用边界，避免错误路由
+
+badcases:
+  # 文章相关的错误路由
+  - userInput: "推荐教程"
+    wrongSkill: "article-recommend"
+    correctSkill: "course-recommend"
+    reason: "推荐教程应该路由到教程相关，而不是文章相关"
+    category: "错误分类"
+
+  - userInput: "学习路线"
+    wrongSkill: "article-recommend"
+    correctSkill: "learning-path"
+    reason: "学习路线应该路由到教程相关，而不是文章相关"
+    category: "错误分类"
+
+  - userInput: "什么是面向对象"
+    wrongSkill: "article-recommend"
+    correctSkill: "concept-explanation"
+    reason: "概念解释应该路由到知识问答，而不是文章相关"
+    category: "错误分类"
+
+  # 教程相关的错误路由
+  - userInput: "推荐文章"
+    wrongSkill: "course-recommend"
+    correctSkill: "hot-article"
+    reason: "推荐文章应该路由到文章相关，而不是教程相关"
+    category: "错误分类"
+
+  - userInput: "搜索Java文章"
+    wrongSkill: "course-recommend"
+    correctSkill: "article-search"
+    reason: "搜索文章应该路由到文章相关，而不是教程相关"
+    category: "错误分类"
+
+  - userInput: "如何学习Java"
+    wrongSkill: "course-recommend"
+    correctSkill: "technical-qa"
+    reason: "技术问题应该路由到知识问答，而不是教程相关"
+    category: "错误分类"
+
+  # 知识问答相关的错误路由
+  - userInput: "推荐热门文章"
+    wrongSkill: "knowledge-qa"
+    correctSkill: "hot-article"
+    reason: "推荐文章应该路由到文章相关，而不是知识问答"
+    category: "错误分类"
+
+  - userInput: "推荐教程"
+    wrongSkill: "knowledge-qa"
+    correctSkill: "course-recommend"
+    reason: "推荐教程应该路由到教程相关，而不是知识问答"
+    category: "错误分类"
+
+  - userInput: "搜索Spring教程"
+    wrongSkill: "knowledge-qa"
+    correctSkill: "search-course"
+    reason: "搜索教程应该路由到教程相关，而不是知识问答"
+    category: "错误分类"
+
+  # 通用对话相关的错误路由
+  - userInput: "推荐文章"
+    wrongSkill: "general-chat"
+    correctSkill: "hot-article"
+    reason: "推荐文章应该路由到文章相关，而不是通用对话"
+    category: "错误分类"
+
+  - userInput: "什么是Java"
+    wrongSkill: "general-chat"
+    correctSkill: "concept-explanation"
+    reason: "概念解释应该路由到知识问答，而不是通用对话"
+    category: "错误分类"
+
+  # 语义模糊的边界case
+  - userInput: "Java怎么学"
+    wrongSkill: "article-recommend"
+    correctSkill: "technical-qa"
+    reason: "虽然涉及学习，但'怎么学'是技术问题，应该路由到知识问答"
+    category: "边界case"
+
+  - userInput: "Spring Boot教程推荐"
+    wrongSkill: "article-recommend"
+    correctSkill: "recommend-course"
+    reason: "明确提到'教程'，应该路由到教程相关"
+    category: "边界case"
+
+  - userInput: "有没有好的Java学习资源"
+    wrongSkill: "article-search"
+    correctSkill: "recommend-course"
+    reason: "'学习资源'包括教程和课程，优先路由到教程相关"
+    category: "边界case"
+
+  # 复杂语义的case
+  - userInput: "Spring Boot和Spring Cloud有什么区别"
+    wrongSkill: "article-recommend"
+    correctSkill: "concept-explanation"
+    reason: "询问区别是概念解释，应该路由到知识问答"
+    category: "复杂语义"
+
+  - userInput: "数据库设计要注意什么"
+    wrongSkill: "course-recommend"
+    correctSkill: "best-practice"
+    reason: "询问注意事项是最佳实践，应该路由到知识问答"
+    category: "复杂语义"
+
+  - userInput: "如何优化SQL查询性能"
+    wrongSkill: "course-recommend"
+    correctSkill: "best-practice"
+    reason: "性能优化是最佳实践，应该路由到知识问答"
+    category: "复杂语义"

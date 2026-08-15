@@ -1,0 +1,117 @@
+# Skill Tree配置 - 只定义树形结构
+# 详细的skill内容在SKILL.md文件中
+
+tree:
+  # 1层：业务大类
+  - id: "article-category"
+    name: "文章相关"
+    description: "处理与文章相关的需求"
+    level: 1
+    children:
+      - "hot-article"
+      - "article-search"
+      - "article-detail"
+
+  - id: "course-category"
+    name: "教程相关"
+    description: "处理与教程相关的需求"
+    level: 1
+    children:
+      - "recommend-course"
+      - "search-course"
+      - "learning-path"
+
+  - id: "knowledge-category"
+    name: "知识问答"
+    description: "处理技术问题和概念解释"
+    level: 1
+    children:
+      - "concept-explanation"
+      - "technical-qa"
+      - "best-practice"
+
+  - id: "general-category"
+    name: "通用对话"
+    description: "处理问候和帮助说明"
+    level: 1
+    children:
+      - "greeting"
+      - "help"
+
+  # 2层：细分场景
+  - id: "hot-article"
+    name: "热门文章推荐"
+    description: "推荐热门技术文章"
+    level: 2
+    parentId: "article-category"
+    skillFile: "article-recommend"  # 对应 skills/article-recommend/SKILL.md
+
+  - id: "article-search"
+    name: "文章搜索"
+    description: "根据关键词搜索文章"
+    level: 2
+    parentId: "article-category"
+    skillFile: "article-recommend"
+
+  - id: "article-detail"
+    name: "文章详情"
+    description: "获取文章详细信息"
+    level: 2
+    parentId: "article-category"
+    skillFile: "article-recommend"
+
+  - id: "recommend-course"
+    name: "推荐教程"
+    description: "推荐技术教程"
+    level: 2
+    parentId: "course-category"
+    skillFile: "course-recommend"
+
+  - id: "search-course"
+    name: "教程搜索"
+    description: "搜索技术教程"
+    level: 2
+    parentId: "course-category"
+    skillFile: "course-recommend"
+
+  - id: "learning-path"
+    name: "学习路线"
+    description: "提供学习路线规划"
+    level: 2
+    parentId: "course-category"
+    skillFile: "course-recommend"
+
+  - id: "concept-explanation"
+    name: "概念解释"
+    description: "解释技术概念和原理"
+    level: 2
+    parentId: "knowledge-category"
+    skillFile: "knowledge-qa"
+
+  - id: "technical-qa"
+    name: "技术问题"
+    description: "解答技术问题"
+    level: 2
+    parentId: "knowledge-category"
+    skillFile: "knowledge-qa"
+
+  - id: "best-practice"
+    name: "最佳实践"
+    description: "提供技术最佳实践"
+    level: 2
+    parentId: "knowledge-category"
+    skillFile: "knowledge-qa"
+
+  - id: "greeting"
+    name: "问候"
+    description: "处理用户问候"
+    level: 2
+    parentId: "general-category"
+    skillFile: "general-chat"
+
+  - id: "help"
+    name: "帮助"
+    description: "提供帮助说明"
+    level: 2
+    parentId: "general-category"
+    skillFile: "general-chat"

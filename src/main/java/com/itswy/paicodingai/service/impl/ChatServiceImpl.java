@@ -1,14 +1,12 @@
 package com.itswy.paicodingai.service.impl;
 
 import com.itswy.paicodingai.agent.AgentContext;
-import com.itswy.paicodingai.agent.RouteAgent;
+import com.itswy.paicodingai.agent.PaicodingAgent;
 import com.itswy.paicodingai.config.SystemPromptConfig;
-import com.itswy.paicodingai.enums.AgentTypeEnum;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
 import com.itswy.paicodingai.memory.util.RedisUtils;
 import com.itswy.paicodingai.service.ChatService;
 import com.itswy.paicodingai.service.ChatSessionService;
-import com.itswy.paicodingai.tools.ToolResultHolder;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,21 +15,12 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 流式对话实现（支持多Agent路由）
+ * 流式对话实现
  *
- * 参考天机学堂实现：
- * 1. 用户提问 → RouteAgent识别意图
- * 2. 路由到对应Agent（ArticleAgent/CourseAgent/KnowledgeAgent/GeneralAgent）
- * 3. Agent调用工具，返回结果
- *
- * 停止生成原理：
- *   Redis 存放 sessionId → "true" 表示正在生成
- *   流式输出中 takeWhile 检查这个标记
- *   用户点停止 → 删除标记 → takeWhile 检测到标记不存在 → 停止输出
+ * 使用PaicodingAgent处理用户请求
  */
 @Slf4j
 @Service
@@ -43,7 +32,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatClient chatClient;
     private final SystemPromptConfig systemPromptConfig;
     private final RedisUtils redisUtils;
-    private final RouteAgent routeAgent;
+    private final PaicodingAgent paicodingAgent;
     private final ChatSessionService chatSessionService;
 
     /** 生成状态的Redis Key前缀 */
@@ -66,7 +55,7 @@ public class ChatServiceImpl implements ChatService {
         String title = question.length() > 20 ? question.substring(0, 20) + "..." : question;
         chatSessionService.update(sessionId, title, 0L);
 
-        return routeAgent.route(question, ctx)
+        return paicodingAgent.chat(question, ctx)
             // 生成开始时，在Redis中设置标记
             .doFirst(() -> {
                 String key = GENERATE_STATUS_KEY + sessionId;
@@ -106,9 +95,8 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public String chatText(String question) {
-        String agentType = AgentTypeEnum.GENERAL.getAgentName();
         return this.chatClient.prompt()
-                .system(this.systemPromptConfig.getSystemMessage(agentType))
+                .system(this.systemPromptConfig.getSystemMessage("paicoding"))
                 .user(question)
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "text-mode"))
                 .call()

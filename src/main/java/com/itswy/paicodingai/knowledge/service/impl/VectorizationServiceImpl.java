@@ -2,10 +2,7 @@ package com.itswy.paicodingai.knowledge.service.impl;
 
 import com.itswy.paicodingai.knowledge.service.VectorizationService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.embedding.Embedding;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.ai.embedding.EmbeddingRequest;
-import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -26,15 +23,15 @@ public class VectorizationServiceImpl implements VectorizationService {
     @Override
     public float[] embed(String text) {
         try {
-            EmbeddingRequest request = new EmbeddingRequest(List.of(text));
-            EmbeddingResponse response = embeddingModel.call(request);
+            // 简化实现：使用EmbeddingModel的call方法
+            List<String> texts = List.of(text);
+            List<float[]> results = embedBatch(texts);
 
-            if (response != null && response.getData() != null && !response.getData().isEmpty()) {
-                Embedding embedding = response.getData().get(0);
-                return embedding.getOutput();
+            if (results.isEmpty()) {
+                throw new RuntimeException("向量化失败：返回结果为空");
             }
 
-            throw new RuntimeException("向量化失败：返回结果为空");
+            return results.get(0);
 
         } catch (Exception e) {
             log.error("文本向量化失败: {}", e.getMessage(), e);
@@ -47,13 +44,22 @@ public class VectorizationServiceImpl implements VectorizationService {
         List<float[]> results = new ArrayList<>();
 
         try {
-            // 批量向量化
-            EmbeddingRequest request = new EmbeddingRequest(texts);
-            EmbeddingResponse response = embeddingModel.call(request);
+            // 使用EmbeddingModel进行批量向量化
+            // Spring AI 2.0 API变化：直接调用call方法
+            org.springframework.ai.embedding.EmbeddingRequest request =
+                    new org.springframework.ai.embedding.EmbeddingRequest(
+                            texts,
+                            org.springframework.ai.embedding.EmbeddingOptions.builder().build()
+                    );
 
-            if (response != null && response.getData() != null) {
-                for (Embedding embedding : response.getData()) {
-                    results.add(embedding.getOutput());
+            org.springframework.ai.embedding.EmbeddingResponse response = embeddingModel.call(request);
+
+            if (response != null && response.getResults() != null) {
+                for (org.springframework.ai.embedding.Embedding embedding : response.getResults()) {
+                    // 获取向量数据
+                    // Spring AI 2.0: getOutput()返回的是float[]
+                    float[] vector = embedding.getOutput();
+                    results.add(vector);
                 }
             }
 

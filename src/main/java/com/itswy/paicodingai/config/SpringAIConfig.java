@@ -43,15 +43,11 @@ public class SpringAIConfig {
     public ChatClient chatClient(
             ChatModel chatModel,
             Advisor loggerAdvisor,
-            Advisor memoryAdvisor,
-            ArticleTools articleTools,
-            CourseTools courseTools,
-            SimpleSearchTool simpleSearchTool) {
+            Advisor memoryAdvisor) {
         return ChatClient.builder(chatModel)
                 .defaultAdvisors(loggerAdvisor)
                 .defaultAdvisors(memoryAdvisor)
-                // ★ 注册Tool Calling工具（Article、Course、MCP）
-                .defaultTools(articleTools, courseTools, simpleSearchTool)
+                // 工具在Agent中注册，不在ChatClient中注册
                 .build();
     }
 

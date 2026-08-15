@@ -6,10 +6,10 @@ import com.itswy.paicodingai.file.entity.FileUpload;
 import com.itswy.paicodingai.file.mapper.ChunkInfoMapper;
 import com.itswy.paicodingai.file.mapper.FileUploadMapper;
 import com.itswy.paicodingai.file.service.FileUploadService;
+import com.itswy.paicodingai.memory.util.RedisUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,7 +30,7 @@ public class FileUploadServiceImpl implements FileUploadService {
 
     private final FileUploadMapper fileUploadMapper;
     private final ChunkInfoMapper chunkInfoMapper;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisUtils redisUtils;
 
     @Value("${file.upload.base-path:./uploads}")
     private String basePath;
@@ -38,7 +38,7 @@ public class FileUploadServiceImpl implements FileUploadService {
     @Value("${file.upload.chunk-path:./uploads/chunks}")
     private String chunkPath;
 
-    @Value("${file.upload merged-path:./uploads/merged}")
+    @Value("${file.upload.merged-path:./uploads/merged}")
     private String mergedPath;
 
     private static final String UPLOAD_STATUS_KEY = "upload:status:";
@@ -142,8 +142,8 @@ public class FileUploadServiceImpl implements FileUploadService {
 
             // 更新Redis状态
             String redisKey = UPLOAD_STATUS_KEY + fileMd5;
-            redisTemplate.opsForHash().put(redisKey, chunkIndex.toString(), "1");
-            redisTemplate.expire(redisKey, STATUS_EXPIRE_HOURS, TimeUnit.HOURS);
+            redisUtils.opsForHash().put(redisKey, chunkIndex.toString(), "1");
+            redisUtils.expire(redisKey, (int) STATUS_EXPIRE_HOURS);
 
             // 获取已上传的分片列表
             List<Integer> uploadedChunks = getUploadedChunks(fileMd5);
@@ -240,7 +240,7 @@ public class FileUploadServiceImpl implements FileUploadService {
             cleanupChunks(fileMd5, chunks);
 
             // 清理Redis状态
-            redisTemplate.delete(UPLOAD_STATUS_KEY + fileMd5);
+            redisUtils.delete(UPLOAD_STATUS_KEY + fileMd5);
 
             result.put("code", 200);
             result.put("message", "文件合并成功");

@@ -1,5 +1,6 @@
 package com.itswy.paicodingai.knowledge.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeBase;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeChunk;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeDocument;
@@ -51,8 +52,7 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
 
             // 获取所有分块
             List<KnowledgeChunk> chunks = chunkMapper.selectList(
-                    new com.baomidou.mybatisplus.core.toolkit.Wrappers
-                            .LambdaQueryWrapper<KnowledgeChunk>()
+                    new LambdaQueryWrapper<KnowledgeChunk>()
                             .eq(KnowledgeChunk::getDocId, docId)
                             .orderByAsc(KnowledgeChunk::getChunkIndex)
             );

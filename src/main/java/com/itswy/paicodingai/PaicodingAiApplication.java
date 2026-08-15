@@ -18,7 +18,11 @@ import java.net.InetAddress;
  */
 @Slf4j
 @SpringBootApplication
-@MapperScan("com.itswy.paicodingai.mapper")
+@MapperScan({
+        "com.itswy.paicodingai.mapper",
+        "com.itswy.paicodingai.file.mapper",
+        "com.itswy.paicodingai.knowledge.mapper"
+})
 @EnableFeignClients  // ★ 启用Feign客户端，用于调用paicoding微服务
 public class PaicodingAiApplication {
 

@@ -102,6 +102,7 @@ body{font-family:var(--font);background:#f8fafc;min-height:100vh;color:var(--tex
 .level-hard{background:#fee2e2;color:#dc2626}
 .tool-card-title{font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:6px;line-height:1.4}
 .tool-card-summary{font-size:12px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px}
+.tool-card-content{font-size:12px;color:var(--text-primary);line-height:1.6;margin-bottom:10px;max-height:200px;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:var(--radius-sm)}
 .tool-card-meta{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-muted);margin-bottom:8px}
 .tool-card-info{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-bottom:10px}
 .tool-price{font-size:16px;font-weight:700;color:var(--red)}
@@ -318,6 +319,66 @@ closeBtn.onclick=function(){widget.classList.remove('open');fab.classList.remove
 
 // ==================== Tabs (已移除，改为底部折叠区域) ====================
 // Tabs逻辑已移除，改为底部折叠区域
+
+// ==================== Article Card Rendering ====================
+function renderArticleCard(jsonData) {
+  if(jsonData.type === 'article_list') {
+    // 文章列表
+    var articles = jsonData.data.articles || [];
+    if(articles.length === 0) {
+      msgBox.innerHTML += '<div class="tool-card"><p>暂无相关文章</p></div>';
+      scrollDown();
+      return;
+    }
+
+    articles.forEach(function(article) {
+      var articleHtml = '<div class="tool-card article-card">' +
+        '<div class="tool-card-header">' +
+          '<span class="tool-card-icon">📄</span>' +
+          '<span class="tool-card-type">文章</span>' +
+        '</div>' +
+        '<h4 class="tool-card-title">' + (article.title || '未知标题') + '</h4>' +
+        '<p class="tool-card-summary">' + (article.summary || '') + '</p>' +
+        '<div class="tool-card-meta">' +
+          '<span>分类：' + (article.category || '-') + '</span>' +
+          '<span>作者：' + (article.author || '-') + '</span>' +
+          '<span>浏览：' + formatNumber(article.viewCount) + '</span>' +
+        '</div>' +
+        (article.tags ? '<div class="tool-card-tags">' + article.tags.split(',').map(function(t){return '<span class="tag">' + t.trim() + '</span>'}).join('') + '</div>' : '') +
+        '<div class="tool-card-actions">' +
+          '<button class="tool-btn primary" onclick="window.open(\'/article/' + article.id + '\')">查看详情</button>' +
+          '<button class="tool-btn" onclick="likeArticle(' + article.id + ')">👍 点赞 ' + formatNumber(article.likeCount) + '</button>' +
+        '</div>' +
+      '</div>';
+      msgBox.innerHTML += articleHtml;
+    });
+    scrollDown();
+  } else if(jsonData.type === 'article_detail') {
+    // 单篇文章详情
+    var article = jsonData.data;
+    var articleHtml = '<div class="tool-card article-card">' +
+      '<div class="tool-card-header">' +
+        '<span class="tool-card-icon">📄</span>' +
+        '<span class="tool-card-type">文章详情</span>' +
+      '</div>' +
+      '<h4 class="tool-card-title">' + (article.title || '未知标题') + '</h4>' +
+      '<p class="tool-card-summary">' + (article.summary || '') + '</p>' +
+      '<div class="tool-card-content">' + (article.content || '') + '</div>' +
+      '<div class="tool-card-meta">' +
+        '<span>分类：' + (article.category || '-') + '</span>' +
+        '<span>作者：' + (article.author || '-') + '</span>' +
+        '<span>浏览：' + formatNumber(article.viewCount) + '</span>' +
+      '</div>' +
+      (article.tags ? '<div class="tool-card-tags">' + article.tags.split(',').map(function(t){return '<span class="tag">' + t.trim() + '</span>'}).join('') + '</div>' : '') +
+      '<div class="tool-card-actions">' +
+        '<button class="tool-btn primary" onclick="window.open(\'/article/' + article.id + '\')">查看原文</button>' +
+        '<button class="tool-btn" onclick="likeArticle(' + article.id + ')">👍 点赞 ' + formatNumber(article.likeCount) + '</button>' +
+      '</div>' +
+    '</div>';
+    msgBox.innerHTML += articleHtml;
+    scrollDown();
+  }
+}
 
 // ==================== Tool Calling Result Rendering ====================
 function renderToolResult(result) {
@@ -669,10 +730,111 @@ function doSend(text){
   .then(function(res){
     if(!res.ok){bubble.textContent='请求失败('+res.status+')';finishSend();return}
     var reader=res.body.getReader(),decoder=new TextDecoder(),buffer='';
-    function read(){reader.read().then(function(r){if(r.done){finishSend();return}buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();lines.forEach(function(line){if(line.startsWith('data:')){var js=line.substring(5).trim();if(js==='[DONE]')return;try{var j=JSON.parse(js);if(j.eventType===1001&&j.eventData){answer+=j.eventData;bubble.textContent=answer;scrollDown()}else if(j.eventType===1003&&j.eventData){renderToolResult(j.eventData)}else if(j.eventType===1004&&j.eventData){showRouteHint(j.eventData)}}catch(e){}}});read()}).catch(function(err){if(err.name!=='AbortError')bubble.textContent=answer||'读取失败';finishSend()})}
+    function read(){reader.read().then(function(r){if(r.done){finishSend();return}buffer+=decoder.decode(r.value,{stream:true});var lines=buffer.split('\n');buffer=lines.pop();lines.forEach(function(line){if(line.startsWith('data:')){var js=line.substring(5).trim();if(js==='[DONE]')return;try{var j=JSON.parse(js);if(j.eventType===1001&&j.eventData){
+        // 文本回复 - 检测是否包含JSON格式
+        var eventData = j.eventData;
+        var jsonDetected = false;
+
+        // 方式1：检测```json```代码块
+        if(eventData.includes('```json')) {
+          var jsonMatch = eventData.match(/```json\s*([\s\S]*?)```/);
+          if(jsonMatch && jsonMatch[1]) {
+            try {
+              var jsonData = JSON.parse(jsonMatch[1].trim());
+              if(jsonData.type === 'article_list' || jsonData.type === 'article_detail') {
+                renderArticleCard(jsonData);
+                jsonDetected = true;
+                // 只显示非JSON部分的文本
+                var textPart = eventData.replace(/```json[\s\S]*?```/, '').trim();
+                if(textPart) {
+                  answer += textPart;
+                  bubble.textContent = answer;
+                }
+              }
+            } catch(e) {}
+          }
+        }
+
+        // 方式2：检测纯JSON（如果没有检测到代码块）
+        if(!jsonDetected && eventData.trim().startsWith('{')) {
+          try {
+            var jsonData = JSON.parse(eventData.trim());
+            if(jsonData.type === 'article_list' || jsonData.type === 'article_detail') {
+              renderArticleCard(jsonData);
+              jsonDetected = true;
+            }
+          } catch(e) {}
+        }
+
+        // 如果没有检测到JSON，正常显示文本
+        if(!jsonDetected) {
+          answer += eventData;
+          bubble.textContent = answer;
+        }
+
+        scrollDown()
+      }else if(j.eventType===1003&&j.eventData){renderToolResult(j.eventData)}else if(j.eventType===1004&&j.eventData){showRouteHint(j.eventData)}}catch(e){}}});read()}).catch(function(err){if(err.name!=='AbortError')bubble.textContent=answer||'读取失败';finishSend()})}
     read();
   }).catch(function(err){if(err.name!=='AbortError')bubble.textContent='网络错误';finishSend()});
-  function finishSend(){if(answer&&currentSid&&sessionMap[currentSid])sessionMap[currentSid].msgs.push({role:'ai',text:answer});else if(!answer&&bubble)bubble.textContent='(空回复)';sending=false;btnSend.disabled=false;stopArea.style.display='none';abortController=null;fetchContext()}
+  function finishSend(){
+    // 在文本完成后，检测是否包含JSON并渲染卡片
+    if(answer) {
+      console.log('Finish send, answer length:', answer.length);
+      console.log('Answer contains ```json:', answer.includes('```json'));
+
+      var jsonDetected = false;
+
+      // 检测```json```代码块
+      if(answer.includes('```json')) {
+        var jsonMatch = answer.match(/```json\s*([\s\S]*?)```/);
+        if(jsonMatch && jsonMatch[1]) {
+          try {
+            var jsonData = JSON.parse(jsonMatch[1].trim());
+            console.log('Parsed JSON data:', jsonData);
+            if(jsonData.type === 'article_list' || jsonData.type === 'article_detail') {
+              console.log('Rendering article card...');
+              renderArticleCard(jsonData);
+              jsonDetected = true;
+              // 只保留非JSON部分的文本
+              var textPart = answer.replace(/```json[\s\S]*?```/, '').trim();
+              if(textPart) {
+                bubble.textContent = textPart;
+              } else {
+                bubble.textContent = ''; // 只有JSON，清除文本
+              }
+            }
+          } catch(e) {
+            console.error('JSON parse error:', e);
+          }
+        }
+      }
+
+      // 检测纯JSON（如果没有检测到代码块）
+      if(!jsonDetected && answer.trim().startsWith('{')) {
+        try {
+          var jsonData = JSON.parse(answer.trim());
+          if(jsonData.type === 'article_list' || jsonData.type === 'article_detail') {
+            renderArticleCard(jsonData);
+            jsonDetected = true;
+            bubble.textContent = ''; // 只有JSON，清除文本
+          }
+        } catch(e) {}
+      }
+
+      // 保存到会话
+      if(currentSid && sessionMap[currentSid]) {
+        sessionMap[currentSid].msgs.push({role:'ai',text:answer});
+      }
+    } else if(bubble) {
+      bubble.textContent='(空回复)';
+    }
+
+    sending=false;
+    btnSend.disabled=false;
+    stopArea.style.display='none';
+    abortController=null;
+    fetchContext()
+  }
 }
 function stopChat(){if(abortController){abortController.abort();abortController=null}sending=false;btnSend.disabled=false;stopArea.style.display='none'}
 
