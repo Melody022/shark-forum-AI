@@ -1,6 +1,8 @@
 package com.itswy.paicodingai.knowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeBase;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeChunk;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeDocument;
@@ -35,6 +37,9 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
     @Autowired
     private VectorStoreService vectorStoreService;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private static final String VECTOR_INDEX = "knowledge_vectors";
 
     @Override
@@ -51,14 +56,22 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
             }
 
             // 获取所有分块
-            List<KnowledgeChunk> chunks = chunkMapper.selectList(
+            List<KnowledgeChunk> allChunks = chunkMapper.selectList(
                     new LambdaQueryWrapper<KnowledgeChunk>()
                             .eq(KnowledgeChunk::getDocId, docId)
                             .orderByAsc(KnowledgeChunk::getChunkIndex)
             );
 
+            // 父块只用于上下文恢复，不参与向量索引；扫描图片等没有 OCR 的块也不进入文本检索。
+            List<KnowledgeChunk> chunks = allChunks.stream()
+                    .filter(chunk -> chunk.getChunkRole() == null
+                            || !ChunkRole.PARENT.value.equalsIgnoreCase(chunk.getChunkRole()))
+                    .filter(chunk -> chunk.getSearchable() == null || chunk.getSearchable() == 1)
+                    .toList();
+
             if (chunks.isEmpty()) {
                 log.warn("文档没有分块: docId={}", docId);
+                vectorStoreService.deleteByField(VECTOR_INDEX, "docId", docId);
                 return;
             }
 
@@ -70,6 +83,9 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
                     .toList();
 
             List<float[]> vectors = vectorizationService.embedBatch(texts);
+            if (vectors.size() != chunks.size()) {
+                throw new IllegalStateException("Embedding 返回数量与子块数量不一致");
+            }
 
             // 存储到Elasticsearch
             List<VectorData> vectorDataList = new java.util.ArrayList<>();
@@ -78,17 +94,28 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
                 float[] vector = vectors.get(i);
 
                 Map<String, Object> metadata = new HashMap<>();
+                metadata.put("chunkId", chunk.getId());
                 metadata.put("docId", docId);
                 metadata.put("kbId", doc.getKbId());
                 metadata.put("fileMd5", doc.getFileMd5());
+                metadata.put("fileName", doc.getFileName());
                 metadata.put("chunkIndex", chunk.getChunkIndex());
                 metadata.put("content", chunk.getContent());
                 metadata.put("userId", doc.getUserId());
+                metadata.put("chunkRole", chunk.getChunkRole());
+                metadata.put("parentId", chunk.getParentId());
+                metadata.put("blockType", chunk.getBlockType());
+                metadata.put("pageStart", chunk.getPageStart());
+                metadata.put("pageEnd", chunk.getPageEnd());
+                metadata.put("sectionPath", chunk.getSectionPath());
+                metadata.put("searchable", 1);
+                putStructuredMetadata(metadata, chunk.getMetadataJson());
 
-                String vectorId = docId + "_" + chunk.getChunkIndex();
+                String vectorId = docId + "_" + chunk.getId();
                 vectorDataList.add(new VectorData(vectorId, vector, metadata));
             }
 
+            vectorStoreService.deleteByField(VECTOR_INDEX, "docId", docId);
             vectorStoreService.storeBatch(VECTOR_INDEX, vectorDataList);
 
             log.info("文档处理完成: docId={}, 向量数={}", docId, vectorDataList.size());
@@ -126,6 +153,40 @@ public class DocumentProcessingServiceImpl implements DocumentProcessingService 
             log.info("删除文档向量成功: docId={}", docId);
         } catch (Exception e) {
             log.error("删除文档向量失败: docId={}", docId, e);
+        }
+    }
+
+    private void putStructuredMetadata(Map<String, Object> target, String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return;
+        }
+        try {
+            Map<String, Object> source = objectMapper.readValue(metadataJson,
+                    new TypeReference<Map<String, Object>>() {});
+            Object ocrText = source.get("ocrText");
+            if (ocrText != null) {
+                target.put("ocrText", ocrText);
+            }
+            Object tableText = source.get("tableText");
+            if (tableText != null) {
+                target.put("tableText", tableText);
+            }
+            if (source.containsKey("headers")) {
+                target.put("tableText", String.valueOf(source.get("headers")) + " "
+                        + target.getOrDefault("content", ""));
+            }
+        } catch (Exception e) {
+            log.debug("Chunk 元数据读取失败: {}", e.getMessage());
+        }
+    }
+
+    private enum ChunkRole {
+        PARENT("PARENT");
+
+        private final String value;
+
+        ChunkRole(String value) {
+            this.value = value;
         }
     }
 }

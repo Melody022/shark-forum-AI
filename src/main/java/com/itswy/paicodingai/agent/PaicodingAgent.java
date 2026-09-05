@@ -120,11 +120,12 @@ public class PaicodingAgent extends AbstractAgent {
      * 执行对话（带工具和RAG）
      */
     private Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx, SkillNode skillNode) {
+        String finalPrompt = appendRagContext(systemPrompt, question, ctx);
         // 构建Advisors
         List<Advisor> advisors = extraAdvisors();
 
         return chatClient.prompt()
-            .system(systemPrompt)
+            .system(finalPrompt)
             .user(question)
             .advisors(a -> {
                 a.advisors(advisors);

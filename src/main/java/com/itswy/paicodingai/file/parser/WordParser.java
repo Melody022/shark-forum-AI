@@ -1,24 +1,33 @@
 package com.itswy.paicodingai.file.parser;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
- * Word文档解析器（.docx）
+ * Word 文档解析器，保留标题层级、段落、代码和表格边界。
  */
 @Slf4j
 @Component
 public class WordParser implements DocumentParser {
 
-    private static final int CHUNK_SIZE = 512;
-    private static final int CHUNK_OVERLAP = 50;
+    private static final Pattern LIST_PATTERN = Pattern.compile("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+).+");
 
     @Override
     public String getSupportedType() {
@@ -26,98 +35,160 @@ public class WordParser implements DocumentParser {
     }
 
     @Override
+    public List<String> getSupportedTypes() {
+        // .doc 是旧二进制格式，需要 poi-scratchpad；当前项目只声明支持 OOXML。
+        return List.of("docx");
+    }
+
+    @Override
     public boolean supports(String fileType) {
-        return "docx".equalsIgnoreCase(fileType) || "doc".equalsIgnoreCase(fileType);
+        return fileType != null && getSupportedTypes().contains(fileType.toLowerCase(Locale.ROOT));
     }
 
     @Override
     public ParseResult parse(File file) {
-        try {
-            FileInputStream fis = new FileInputStream(file);
-            XWPFDocument document = new XWPFDocument(fis);
+        try (FileInputStream input = new FileInputStream(file);
+             XWPFDocument document = new XWPFDocument(input)) {
+            List<ContentBlock> blocks = new ArrayList<>();
+            Deque<String> sectionNames = new ArrayDeque<>();
+            Deque<Integer> sectionLevels = new ArrayDeque<>();
+            String currentSectionId = null;
+            String title = null;
 
-            XWPFWordExtractor extractor = new XWPFWordExtractor(document);
-            String content = extractor.getText();
-            document.close();
-            fis.close();
+            for (IBodyElement element : document.getBodyElements()) {
+                if (element instanceof XWPFParagraph paragraph) {
+                    String text = paragraph.getText();
+                    if (text == null || text.isBlank()) {
+                        continue;
+                    }
+                    Integer level = headingLevel(paragraph);
+                    if (level != null) {
+                        while (!sectionLevels.isEmpty() && sectionLevels.peek() >= level) {
+                            sectionLevels.pop();
+                            sectionNames.pop();
+                        }
+                        sectionLevels.push(level);
+                        sectionNames.push(text.trim());
+                        currentSectionId = "section-" + (blocks.size() + 1);
+                        blocks.add(ContentBlock.builder()
+                                .blockId("block-" + (blocks.size() + 1))
+                                .type(BlockType.HEADING)
+                                .content(text.trim())
+                                .sectionPath(sectionPath(sectionNames))
+                                .parentId(currentSectionId)
+                                .searchable(false)
+                                .metadata(Map.of("level", level))
+                                .build());
+                        if (title == null) {
+                            title = text.trim();
+                        }
+                        continue;
+                    }
 
-            // 提取标题
-            String title = extractTitle(file.getName(), content);
-
-            // 文本分块
-            List<String> chunks = splitText(content);
-
-            return new ParseResult(
-                    title,
-                    content,
-                    chunks,
-                    getSupportedType(),
-                    file.length()
-            );
-
-        } catch (Exception e) {
-            log.error("Word文档解析失败: {}", file.getName(), e);
-            return new ParseResult("Word文档解析失败: " + e.getMessage());
-        }
-    }
-
-    private String extractTitle(String fileName, String content) {
-        String title = fileName;
-        if (title.contains(".")) {
-            title = title.substring(0, title.lastIndexOf('.'));
-        }
-
-        if (content != null && !content.isBlank() && content.length() < 100) {
-            String firstLine = content.split("\n")[0].trim();
-            if (!firstLine.isBlank()) {
-                title = firstLine;
-            }
-        }
-
-        return title;
-    }
-
-    private List<String> splitText(String text) {
-        List<String> chunks = new ArrayList<>();
-
-        if (text == null || text.isBlank()) {
-            return chunks;
-        }
-
-        text = text.replaceAll("\\s+", " ").trim();
-
-        int start = 0;
-        while (start < text.length()) {
-            int end = Math.min(start + CHUNK_SIZE, text.length());
-
-            if (end < text.length()) {
-                int lastSentence = findLastSentenceEnd(text, start, end);
-                if (lastSentence > start) {
-                    end = lastSentence;
+                    String trimmed = text.trim();
+                    BlockType type = isCodeParagraph(paragraph) ? BlockType.CODE
+                            : LIST_PATTERN.matcher(trimmed).matches() ? BlockType.LIST : BlockType.TEXT;
+                    blocks.add(ContentBlock.builder()
+                            .blockId("block-" + (blocks.size() + 1))
+                            .type(type)
+                            .content(trimmed)
+                            .sectionPath(sectionPath(sectionNames))
+                            .parentId(currentSectionId)
+                            .build());
+                } else if (element instanceof XWPFTable table) {
+                    addTableBlock(blocks, table, currentSectionId, sectionPath(sectionNames));
                 }
             }
 
-            String chunk = text.substring(start, end).trim();
-            if (!chunk.isBlank()) {
-                chunks.add(chunk);
+            String content = blocks.stream().map(ContentBlock::getContent)
+                    .filter(value -> value != null && !value.isBlank())
+                    .reduce((left, right) -> left + "\n\n" + right).orElse("");
+            if (title == null || title.isBlank()) {
+                title = fileNameWithoutExtension(file.getName());
             }
-
-            start = end - CHUNK_OVERLAP;
-            if (start >= text.length()) {
-                break;
-            }
+            return new ParseResult(title, content, blocks, getSupportedType(), file.length(), true);
+        } catch (Exception e) {
+            log.error("Word 文档解析失败: {}", file.getName(), e);
+            return new ParseResult("Word 文档解析失败: " + e.getMessage());
         }
-
-        return chunks;
     }
 
-    private int findLastSentenceEnd(String text, int start, int end) {
-        for (int i = end - 1; i > start; i--) {
-            char c = text.charAt(i);
-            if (c == '。' || c == '？' || c == '！' || c == '.' || c == '?' || c == '!') {
-                return i + 1;
+    private void addTableBlock(List<ContentBlock> blocks, XWPFTable table,
+                               String parentId, String sectionPath) {
+        List<String> headers = new ArrayList<>();
+        List<String> rows = new ArrayList<>();
+        List<XWPFTableRow> tableRows = table.getRows();
+        if (!tableRows.isEmpty()) {
+            headers = cells(tableRows.get(0));
+            for (int i = 1; i < tableRows.size(); i++) {
+                rows.add(String.join(" | ", cells(tableRows.get(i))));
             }
         }
-        return -1;
+        StringBuilder content = new StringBuilder();
+        if (!headers.isEmpty()) {
+            content.append(String.join(" | ", headers)).append('\n');
+            content.append(String.join(" | ", headers.stream().map(value -> "---").toList())).append('\n');
+        }
+        rows.forEach(row -> content.append(row).append('\n'));
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("headers", headers);
+        metadata.put("rowCount", rows.size());
+        blocks.add(ContentBlock.builder()
+                .blockId("block-" + (blocks.size() + 1))
+                .type(BlockType.TABLE)
+                .content(content.toString().trim())
+                .sectionPath(sectionPath)
+                .parentId(parentId)
+                .metadata(metadata)
+                .build());
+    }
+
+    private List<String> cells(XWPFTableRow row) {
+        List<String> values = new ArrayList<>();
+        for (XWPFTableCell cell : row.getTableCells()) {
+            values.add(cell.getText().replaceAll("\\s+", " ").trim());
+        }
+        return values;
+    }
+
+    private Integer headingLevel(XWPFParagraph paragraph) {
+        String style = paragraph.getStyle();
+        if (style == null) {
+            return null;
+        }
+        String lower = style.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("heading") || lower.startsWith("标题")) {
+            String digits = lower.replaceAll("[^0-9]", "");
+            if (!digits.isBlank()) {
+                return Math.max(1, Math.min(6, Integer.parseInt(digits)));
+            }
+            return 1;
+        }
+        return null;
+    }
+
+    private boolean isCodeParagraph(XWPFParagraph paragraph) {
+        String style = paragraph.getStyle();
+        if (style == null) {
+            return false;
+        }
+        String lower = style.toLowerCase(Locale.ROOT);
+        return lower.contains("code") || lower.contains("代码") || lower.contains("pre")
+                || lower.contains("source");
+    }
+
+    private String sectionPath(Deque<String> sections) {
+        if (sections.isEmpty()) {
+            return "";
+        }
+        List<String> ordered = new ArrayList<>(sections);
+        java.util.Collections.reverse(ordered);
+        return String.join(" > ", ordered);
+    }
+
+    private String fileNameWithoutExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
     }
 }

@@ -1,6 +1,8 @@
 package com.itswy.paicodingai.agent;
 
 import com.itswy.paicodingai.config.SystemPromptConfig;
+import com.itswy.paicodingai.knowledge.service.SearchResult;
+import com.itswy.paicodingai.knowledge.service.VectorSearchService;
 import com.itswy.paicodingai.rag.service.KnowledgeService;
 import com.itswy.paicodingai.skill.Skill;
 import com.itswy.paicodingai.tools.ToolResultHolder;
@@ -33,6 +35,10 @@ public abstract class AbstractAgent implements Agent {
     /** 知识库服务（RAG）- 可选注入 */
     @Autowired(required = false)
     protected KnowledgeService knowledgeService;
+
+    /** 持久化知识库检索服务。 */
+    @Autowired(required = false)
+    protected VectorSearchService vectorSearchService;
 
     /** 是否启用RAG（子类可覆盖） */
     protected boolean enableRAG = true;
@@ -80,7 +86,7 @@ public abstract class AbstractAgent implements Agent {
      */
     protected Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx, Skill skill) {
         // 1. 构建系统提示词（包含RAG上下文和Skill）
-        String finalSystemPrompt = buildSystemPromptWithRAGAndSkill(question, systemPrompt, skill);
+        String finalSystemPrompt = buildSystemPromptWithRAGAndSkill(question, systemPrompt, skill, ctx);
 
         // 2. 构建Advisors列表
         List<Advisor> advisors = extraAdvisors();
@@ -107,7 +113,8 @@ public abstract class AbstractAgent implements Agent {
     /**
      * 构建带RAG上下文和Skill的系统提示词
      */
-    private String buildSystemPromptWithRAGAndSkill(String question, String systemPrompt, Skill skill) {
+    private String buildSystemPromptWithRAGAndSkill(String question, String systemPrompt,
+                                                    Skill skill, AgentContext ctx) {
         String finalPrompt = systemPrompt;
 
         // 1. 添加Skill上下文（如果有）
@@ -115,31 +122,59 @@ public abstract class AbstractAgent implements Agent {
             finalPrompt = finalPrompt + "\n\n## 技能指南\n" + skill.getBody();
         }
 
-        // 2. 添加RAG上下文（如果启用）
-        if (!enableRAG || knowledgeService == null) {
-            return finalPrompt;
+        return appendRagContext(finalPrompt, question, ctx);
+    }
+
+    /** 为子 Agent 提供统一的知识库上下文构建逻辑。 */
+    protected String appendRagContext(String prompt, String question, AgentContext ctx) {
+        if (!enableRAG) {
+            return prompt;
         }
-
         try {
-            // 从知识库检索相关文档
-            List<Document> documents = knowledgeService.search(question, ragTopK);
-
-            if (documents.isEmpty()) {
-                return finalPrompt;
+            if (vectorSearchService != null && ctx != null) {
+                String userId = ctx.getUserId() == null || ctx.getUserId().isBlank() ? "0" : ctx.getUserId();
+                List<SearchResult> results = vectorSearchService.search(question, userId, ragTopK);
+                if (!results.isEmpty()) {
+                    String context = results.stream()
+                            .map(this::formatSearchResult)
+                            .collect(Collectors.joining("\n---\n"));
+                    return prompt + "\n\n## 知识库参考资料\n" + context
+                            + "\n\n请仅依据参考资料回答相关问题，并在回答中保留文件、章节或页码来源。";
+                }
             }
 
-            // 构建上下文
-            String context = documents.stream()
-                .map(Document::getText)
-                .collect(Collectors.joining("\n---\n"));
-
-            // 将上下文添加到系统提示词
-            return finalPrompt + "\n\n参考资料：\n" + context;
-
-        } catch (Exception e) {
-            // RAG失败时降级为普通模式
-            return finalPrompt;
+            // 兼容旧的内存知识库演示功能。
+            if (knowledgeService != null) {
+                List<Document> documents = knowledgeService.search(question, ragTopK);
+                if (!documents.isEmpty()) {
+                    return prompt + "\n\n参考资料：\n" + documents.stream()
+                            .map(Document::getText)
+                            .collect(Collectors.joining("\n---\n"));
+                }
+            }
+        } catch (Exception ignored) {
+            // 检索失败时继续普通对话，避免知识库故障阻塞聊天。
         }
+        return prompt;
+    }
+
+    private String formatSearchResult(SearchResult result) {
+        StringBuilder source = new StringBuilder("来源：");
+        if (result.fileName != null && !result.fileName.isBlank()) {
+            source.append(result.fileName);
+        }
+        if (result.sectionPath != null && !result.sectionPath.isBlank()) {
+            source.append(" / ").append(result.sectionPath);
+        }
+        if (result.pageStart != null && result.pageStart > 0) {
+            source.append(" / 第").append(result.pageStart);
+            if (result.pageEnd != null && !result.pageEnd.equals(result.pageStart)) {
+                source.append('-').append(result.pageEnd);
+            }
+            source.append("页");
+        }
+        return source + "\n" + (result.context == null || result.context.isBlank()
+                ? result.content : result.context);
     }
 
     /**

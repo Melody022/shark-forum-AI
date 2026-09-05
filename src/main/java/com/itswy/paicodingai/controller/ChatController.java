@@ -36,9 +36,9 @@ public class ChatController {
      */
     @PostMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ChatEventVO> chat(@RequestBody ChatDTO chatDTO) {
-        log.info("收到聊天请求：question={}, sessionId={}",
-                chatDTO.getQuestion(), chatDTO.getSessionId());
-        return this.chatService.chat(chatDTO.getQuestion(), chatDTO.getSessionId());
+        log.info("收到聊天请求：question={}, sessionId={}, userId={}",
+                chatDTO.getQuestion(), chatDTO.getSessionId(), chatDTO.getUserId());
+        return this.chatService.chat(chatDTO.getQuestion(), chatDTO.getSessionId(), chatDTO.getUserId());
     }
 
     /**

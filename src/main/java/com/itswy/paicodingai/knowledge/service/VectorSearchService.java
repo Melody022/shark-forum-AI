@@ -26,5 +26,9 @@ public interface VectorSearchService {
      * @return 搜索结果
      */
     List<SearchResult> searchInKnowledgeBase(String query, Long kbId, int topK);
-}
 
+    /** 带用户权限校验的指定知识库搜索。 */
+    default List<SearchResult> searchInKnowledgeBase(String query, Long kbId, String userId, int topK) {
+        return searchInKnowledgeBase(query, kbId, topK);
+    }
+}

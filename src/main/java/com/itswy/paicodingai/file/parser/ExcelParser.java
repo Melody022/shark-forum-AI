@@ -1,24 +1,30 @@
 package com.itswy.paicodingai.file.parser;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
- * Excel文档解析器
+ * Excel 表格解析器。表头会重复写入每个可检索块，保证单独召回一行时仍然有字段语义。
  */
 @Slf4j
 @Component
 public class ExcelParser implements DocumentParser {
 
-    private static final int CHUNK_SIZE = 512;
-    private static final int CHUNK_OVERLAP = 50;
+    private static final int ROWS_PER_BLOCK = 20;
 
     @Override
     public String getSupportedType() {
@@ -26,138 +32,93 @@ public class ExcelParser implements DocumentParser {
     }
 
     @Override
+    public List<String> getSupportedTypes() {
+        return List.of("xlsx", "xls");
+    }
+
+    @Override
     public boolean supports(String fileType) {
-        return "xlsx".equalsIgnoreCase(fileType) || "xls".equalsIgnoreCase(fileType);
+        return fileType != null && getSupportedTypes().contains(fileType.toLowerCase(Locale.ROOT));
     }
 
     @Override
     public ParseResult parse(File file) {
-        try {
-            FileInputStream fis = new FileInputStream(file);
-            Workbook workbook = new XSSFWorkbook(fis);
+        try (FileInputStream input = new FileInputStream(file);
+             Workbook workbook = WorkbookFactory.create(input)) {
+            DataFormatter formatter = new DataFormatter();
+            List<ContentBlock> blocks = new ArrayList<>();
+            StringBuilder allContent = new StringBuilder();
 
-            StringBuilder contentBuilder = new StringBuilder();
-
-            // 遍历所有工作表
-            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-                Sheet sheet = workbook.getSheetAt(i);
-                contentBuilder.append("工作表: ").append(sheet.getSheetName()).append("\n\n");
-
-                // 遍历所有行
+            for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
+                Sheet sheet = workbook.getSheetAt(sheetIndex);
+                List<List<String>> rows = new ArrayList<>();
+                int maxColumns = 0;
                 for (Row row : sheet) {
-                    List<String> cellValues = new ArrayList<>();
-                    for (int j = 0; j < row.getLastCellNum(); j++) {
-                        Cell cell = row.getCell(j);
-                        String cellValue = getCellValue(cell);
-                        cellValues.add(cellValue);
+                    List<String> values = new ArrayList<>();
+                    int lastCell = Math.max(row.getLastCellNum(), 0);
+                    for (int i = 0; i < lastCell; i++) {
+                        Cell cell = row.getCell(i);
+                        values.add(cell == null ? "" : formatter.formatCellValue(cell).trim());
                     }
-                    contentBuilder.append(String.join(" | ", cellValues)).append("\n");
+                    while (!values.isEmpty() && values.get(values.size() - 1).isBlank()) {
+                        values.remove(values.size() - 1);
+                    }
+                    if (!values.isEmpty()) {
+                        maxColumns = Math.max(maxColumns, values.size());
+                        rows.add(values);
+                    }
                 }
-                contentBuilder.append("\n");
+                if (rows.isEmpty()) {
+                    continue;
+                }
+
+                List<String> headers = rows.get(0);
+                for (int start = 1; start < rows.size(); start += ROWS_PER_BLOCK) {
+                    int end = Math.min(start + ROWS_PER_BLOCK, rows.size());
+                    StringBuilder content = new StringBuilder();
+                    content.append("工作表：").append(sheet.getSheetName()).append('\n');
+                    content.append("表头：").append(String.join(" | ", headers)).append('\n');
+                    content.append("字段：").append(String.join(" | ", headers)).append('\n');
+                    for (int rowIndex = start; rowIndex < end; rowIndex++) {
+                        List<String> values = rows.get(rowIndex);
+                        content.append("行 ").append(rowIndex).append("：")
+                                .append(String.join(" | ", values)).append('\n');
+                    }
+
+                    Map<String, Object> metadata = new LinkedHashMap<>();
+                    metadata.put("sheetName", sheet.getSheetName());
+                    metadata.put("headers", headers);
+                    metadata.put("rowStart", start);
+                    metadata.put("rowEnd", end - 1);
+                    metadata.put("rowCount", end - start);
+                    metadata.put("columnCount", maxColumns);
+                    metadata.put("structuredTable", true);
+
+                    String blockText = content.toString().trim();
+                    blocks.add(ContentBlock.builder()
+                            .blockId("sheet-" + sheetIndex + "-block-" + blocks.size())
+                            .type(BlockType.TABLE)
+                            .content(blockText)
+                            .sectionPath(sheet.getSheetName())
+                            .metadata(metadata)
+                            .build());
+                    if (!allContent.isEmpty()) {
+                        allContent.append("\n\n");
+                    }
+                    allContent.append(blockText);
+                }
             }
 
-            workbook.close();
-            fis.close();
-
-            String content = contentBuilder.toString();
-            String title = extractTitle(file.getName());
-
-            // 文本分块
-            List<String> chunks = splitText(content);
-
-            return new ParseResult(
-                    title,
-                    content,
-                    chunks,
-                    getSupportedType(),
-                    file.length()
-            );
-
+            return new ParseResult(fileNameWithoutExtension(file.getName()), allContent.toString(),
+                    blocks, getSupportedType(), file.length(), true);
         } catch (Exception e) {
-            log.error("Excel解析失败: {}", file.getName(), e);
-            return new ParseResult("Excel解析失败: " + e.getMessage());
+            log.error("Excel 解析失败: {}", file.getName(), e);
+            return new ParseResult("Excel 解析失败: " + e.getMessage());
         }
     }
 
-    private String getCellValue(Cell cell) {
-        if (cell == null) {
-            return "";
-        }
-
-        switch (cell.getCellType()) {
-            case STRING:
-                return cell.getStringCellValue();
-            case NUMERIC:
-                if (DateUtil.isCellDateFormatted(cell)) {
-                    return cell.getDateCellValue().toString();
-                }
-                return String.valueOf(cell.getNumericCellValue());
-            case BOOLEAN:
-                return String.valueOf(cell.getBooleanCellValue());
-            case FORMULA:
-                try {
-                    return cell.getStringCellValue();
-                } catch (Exception e) {
-                    try {
-                        return String.valueOf(cell.getNumericCellValue());
-                    } catch (Exception e2) {
-                        return cell.getCellFormula();
-                    }
-                }
-            default:
-                return "";
-        }
-    }
-
-    private String extractTitle(String fileName) {
-        String title = fileName;
-        if (title.contains(".")) {
-            title = title.substring(0, title.lastIndexOf('.'));
-        }
-        return title;
-    }
-
-    private List<String> splitText(String text) {
-        List<String> chunks = new ArrayList<>();
-
-        if (text == null || text.isBlank()) {
-            return chunks;
-        }
-
-        text = text.replaceAll("\\s+", " ").trim();
-
-        int start = 0;
-        while (start < text.length()) {
-            int end = Math.min(start + CHUNK_SIZE, text.length());
-
-            if (end < text.length()) {
-                int lastSentence = findLastSentenceEnd(text, start, end);
-                if (lastSentence > start) {
-                    end = lastSentence;
-                }
-            }
-
-            String chunk = text.substring(start, end).trim();
-            if (!chunk.isBlank()) {
-                chunks.add(chunk);
-            }
-
-            start = end - CHUNK_OVERLAP;
-            if (start >= text.length()) {
-                break;
-            }
-        }
-
-        return chunks;
-    }
-
-    private int findLastSentenceEnd(String text, int start, int end) {
-        for (int i = end - 1; i > start; i--) {
-            char c = text.charAt(i);
-            if (c == '。' || c == '？' || c == '！' || c == '.' || c == '?' || c == '!') {
-                return i + 1;
-            }
-        }
-        return -1;
+    private String fileNameWithoutExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
     }
 }

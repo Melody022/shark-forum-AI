@@ -1,9 +1,10 @@
 package com.itswy.paicodingai.controller;
 
 import com.itswy.paicodingai.knowledge.entity.KnowledgeBase;
-import com.itswy.paicodingai.knowledge.entity.KnowledgeChunk;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeDocument;
 import com.itswy.paicodingai.knowledge.service.KnowledgeBaseService;
+import com.itswy.paicodingai.knowledge.service.SearchResult;
+import com.itswy.paicodingai.knowledge.service.VectorSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class KnowledgeBaseController {
 
     private final KnowledgeBaseService knowledgeBaseService;
+    private final VectorSearchService vectorSearchService;
 
     /**
      * 创建用户知识库
@@ -130,7 +132,7 @@ public class KnowledgeBaseController {
             @RequestParam String userId,
             @RequestParam(defaultValue = "5") int topK) {
 
-        List<KnowledgeChunk> chunks = knowledgeBaseService.searchKnowledgeBase(query, userId, topK);
+        List<SearchResult> chunks = vectorSearchService.search(query, userId, topK);
 
         Map<String, Object> result = new HashMap<>();
         result.put("code", 200);

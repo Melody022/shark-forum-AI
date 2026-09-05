@@ -54,12 +54,13 @@ public class VectorSearchController {
     public ResponseEntity<Map<String, Object>> searchInKnowledgeBase(
             @RequestParam String query,
             @RequestParam Long kbId,
+            @RequestParam(defaultValue = "0") String userId,
             @RequestParam(defaultValue = "5") int topK) {
 
         Map<String, Object> result = new HashMap<>();
 
         try {
-            List<SearchResult> searchResults = vectorSearchService.searchInKnowledgeBase(query, kbId, topK);
+            List<SearchResult> searchResults = vectorSearchService.searchInKnowledgeBase(query, kbId, userId, topK);
             result.put("code", 200);
             result.put("data", searchResults);
         } catch (Exception e) {

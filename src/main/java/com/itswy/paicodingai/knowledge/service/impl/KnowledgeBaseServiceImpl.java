@@ -1,6 +1,10 @@
 package com.itswy.paicodingai.knowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.itswy.paicodingai.file.parser.BlockType;
+import com.itswy.paicodingai.file.parser.ChunkDraft;
+import com.itswy.paicodingai.file.parser.ContentBlock;
 import com.itswy.paicodingai.file.parser.DocumentParserManager;
 import com.itswy.paicodingai.file.parser.ParseResult;
 import com.itswy.paicodingai.knowledge.entity.KnowledgeBase;
@@ -11,6 +15,7 @@ import com.itswy.paicodingai.knowledge.mapper.KnowledgeChunkMapper;
 import com.itswy.paicodingai.knowledge.mapper.KnowledgeDocumentMapper;
 import com.itswy.paicodingai.knowledge.service.DocumentProcessingService;
 import com.itswy.paicodingai.knowledge.service.KnowledgeBaseService;
+import com.itswy.paicodingai.rag.splitter.HierarchicalChunker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +48,12 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
     @Autowired
     private DocumentProcessingService documentProcessingService;
+
+    @Autowired
+    private HierarchicalChunker hierarchicalChunker;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Value("${file.upload.merged-path:./uploads/merged}")
     private String mergedPath;
@@ -83,6 +94,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 Wrappers.<KnowledgeBase>lambdaQuery()
                         .eq(KnowledgeBase::getUserId, userId)
                         .eq(KnowledgeBase::getType, KnowledgeBase.TYPE_USER)
+                        .eq(KnowledgeBase::getStatus, KnowledgeBase.STATUS_ENABLED)
                         .orderByDesc(KnowledgeBase::getCreatedAt)
         );
     }
@@ -157,7 +169,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
     private void parseDocument(KnowledgeDocument doc) {
         try {
             // 查找合并后的文件
-            File file = findMergedFile(doc.getFileMd5(), doc.getUserId());
+            File file = findMergedFile(doc.getFileMd5(), doc.getUserId(), doc.getFileName());
 
             if (file == null || !file.exists()) {
                 log.error("找不到合并后的文件: fileMd5={}", doc.getFileMd5());
@@ -174,18 +186,20 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 return;
             }
 
-            // 保存分块
-            List<KnowledgeChunk> chunks = new ArrayList<>();
-            for (int i = 0; i < result.getChunks().size(); i++) {
-                KnowledgeChunk chunk = KnowledgeChunk.builder()
-                        .docId(doc.getId())
-                        .chunkIndex(i)
-                        .content(result.getChunks().get(i))
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                knowledgeChunkMapper.insert(chunk);
-                chunks.add(chunk);
+            // 统一结构化块后再生成章节父块和可检索子块。
+            List<ContentBlock> contentBlocks = result.getContentBlocks();
+            if (contentBlocks == null || contentBlocks.isEmpty()) {
+                contentBlocks = legacyBlocks(result);
             }
+            List<ChunkDraft> drafts = hierarchicalChunker.chunk(contentBlocks);
+            if (drafts.isEmpty()) {
+                log.warn("文档解析后没有可入库内容: docId={}", doc.getId());
+            }
+
+            knowledgeChunkMapper.delete(Wrappers.<KnowledgeChunk>lambdaQuery()
+                    .eq(KnowledgeChunk::getDocId, doc.getId()));
+
+            List<KnowledgeChunk> chunks = persistChunkDrafts(doc, drafts);
 
             // 更新文档状态
             doc.setStatus(KnowledgeDocument.STATUS_COMPLETED);
@@ -211,10 +225,77 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
     }
 
-    private File findMergedFile(String fileMd5, String userId) {
+    private List<ContentBlock> legacyBlocks(ParseResult result) {
+        if (result.getChunks() == null || result.getChunks().isEmpty()) {
+            return List.of();
+        }
+        List<ContentBlock> blocks = new ArrayList<>();
+        for (int i = 0; i < result.getChunks().size(); i++) {
+            blocks.add(ContentBlock.builder()
+                    .blockId("legacy-" + i)
+                    .type(BlockType.TEXT)
+                    .content(result.getChunks().get(i))
+                    .build());
+        }
+        return blocks;
+    }
+
+    private List<KnowledgeChunk> persistChunkDrafts(KnowledgeDocument doc, List<ChunkDraft> drafts) {
+        List<KnowledgeChunk> chunks = new ArrayList<>();
+        java.util.Map<String, Long> parentIds = new java.util.HashMap<>();
+        int chunkIndex = 0;
+
+        for (ChunkDraft draft : drafts) {
+            Long parentId = ChunkDraft.ROLE_CHILD.equals(draft.getRole())
+                    ? parentIds.get(draft.getParentKey()) : null;
+            KnowledgeChunk chunk = KnowledgeChunk.builder()
+                    .docId(doc.getId())
+                    .chunkIndex(chunkIndex++)
+                    .content(draft.getContent())
+                    .chunkRole(draft.getRole())
+                    .parentId(parentId)
+                    .parentKey(draft.getParentKey())
+                    .sourceBlockId(draft.getSourceBlockId())
+                    .blockType(draft.getBlockType() == null ? BlockType.TEXT.name() : draft.getBlockType().name())
+                    .pageStart(draft.getPageStart())
+                    .pageEnd(draft.getPageEnd())
+                    .sectionPath(draft.getSectionPath())
+                    .metadataJson(writeMetadata(draft.getMetadata()))
+                    .searchable(draft.isSearchable() ? 1 : 0)
+                    .tokenCount(estimateTokenCount(draft.getContent()))
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            knowledgeChunkMapper.insert(chunk);
+            chunks.add(chunk);
+            if (ChunkDraft.ROLE_PARENT.equals(draft.getRole())) {
+                parentIds.put(draft.getParentKey(), chunk.getId());
+            }
+        }
+        return chunks;
+    }
+
+    private String writeMetadata(java.util.Map<String, Object> metadata) {
+        try {
+            return objectMapper.writeValueAsString(metadata == null ? java.util.Map.of() : metadata);
+        } catch (Exception e) {
+            log.warn("Chunk 元数据序列化失败", e);
+            return "{}";
+        }
+    }
+
+    private int estimateTokenCount(String content) {
+        if (content == null || content.isBlank()) {
+            return 0;
+        }
+        return Math.max(1, content.codePointCount(0, content.length()) / 2);
+    }
+
+    private File findMergedFile(String fileMd5, String userId, String fileName) {
         // 尝试多个可能的路径
         String[] possiblePaths = {
+                mergedPath + "/" + userId + "/" + fileName,
                 mergedPath + "/" + userId + "/" + fileMd5,
+                mergedPath + "/" + fileName,
                 mergedPath + "/" + fileMd5
         };
 
@@ -291,6 +372,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         return knowledgeChunkMapper.selectList(
                 Wrappers.<KnowledgeChunk>lambdaQuery()
                         .in(KnowledgeChunk::getDocId, docIds)
+                        .eq(KnowledgeChunk::getChunkRole, ChunkDraft.ROLE_CHILD)
+                        .eq(KnowledgeChunk::getSearchable, 1)
                         .like(KnowledgeChunk::getContent, query)
                         .last("LIMIT " + topK)
         );
@@ -317,6 +400,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         return knowledgeChunkMapper.selectList(
                 Wrappers.<KnowledgeChunk>lambdaQuery()
                         .in(KnowledgeChunk::getDocId, docIds)
+                        .eq(KnowledgeChunk::getChunkRole, ChunkDraft.ROLE_CHILD)
+                        .eq(KnowledgeChunk::getSearchable, 1)
                         .like(KnowledgeChunk::getContent, query)
                         .last("LIMIT " + topK)
         );
@@ -332,7 +417,7 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
         }
 
         // 检查权限
-        if (!doc.getUserId().equals(userId)) {
+        if (doc.getUserId() == null || !doc.getUserId().equals(userId)) {
             return false;
         }
 
@@ -341,6 +426,9 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
                 Wrappers.<KnowledgeChunk>lambdaQuery()
                         .eq(KnowledgeChunk::getDocId, docId)
         );
+
+        // 同步清理 ES 中的子块向量。
+        documentProcessingService.deleteDocumentVectors(docId);
 
         // 删除文档
         knowledgeDocumentMapper.deleteById(docId);
@@ -358,10 +446,11 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         // 系统知识库所有人都可以访问
         if (kb.getType() == KnowledgeBase.TYPE_SYSTEM) {
-            return true;
+            return kb.getStatus() != null && kb.getStatus() == KnowledgeBase.STATUS_ENABLED;
         }
 
         // 用户知识库只有所有者可以访问
-        return kb.getUserId().equals(userId);
+        return kb.getStatus() != null && kb.getStatus() == KnowledgeBase.STATUS_ENABLED
+                && kb.getUserId() != null && kb.getUserId().equals(userId);
     }
 }

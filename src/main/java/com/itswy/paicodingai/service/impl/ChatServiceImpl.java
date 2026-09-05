@@ -43,12 +43,18 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId) {
+        return chat(question, sessionId, "0");
+    }
+
+    @Override
+    public Flux<ChatEventVO> chat(String question, String sessionId, String userId) {
         log.info("用户提问：{}，会话：{}", question, sessionId);
 
         var requestId = generateRequestId();
         AgentContext ctx = AgentContext.builder()
             .sessionId(sessionId)
             .requestId(requestId)
+            .userId(userId == null || userId.isBlank() ? "0" : userId)
             .build();
 
         // 更新会话标题（取问题前20个字符）

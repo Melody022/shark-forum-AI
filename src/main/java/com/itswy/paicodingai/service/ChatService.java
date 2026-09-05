@@ -17,6 +17,9 @@ public interface ChatService {
      */
     Flux<ChatEventVO> chat(String question, String sessionId);
 
+    /** 带用户隔离标识的流式对话。 */
+    Flux<ChatEventVO> chat(String question, String sessionId, String userId);
+
     /**
      * 停止 AI 生成
      */

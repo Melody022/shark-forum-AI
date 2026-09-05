@@ -109,3 +109,11 @@ paicoding:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
       namespace: ${NACOS_NAMESPACE:}
       group: PAICODING_AI_PROMPT
+
+# RAG 解析、切片和向量索引配置
+rag:
+  embedding-dimensions: ${RAG_EMBEDDING_DIMENSIONS:1024}
+  chunk:
+    parent-max-chars: ${RAG_PARENT_MAX_CHARS:6000}
+    child-max-chars: ${RAG_CHILD_MAX_CHARS:1800}
+    child-overlap-chars: ${RAG_CHILD_OVERLAP_CHARS:240}

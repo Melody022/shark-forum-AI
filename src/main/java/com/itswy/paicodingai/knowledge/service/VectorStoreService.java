@@ -37,6 +37,18 @@ public interface VectorStoreService {
     List<VectorSearchResult> search(String index, float[] queryVector, int topK);
 
     /**
+     * BM25 关键词检索，可携带知识库、文档和 searchable 过滤条件。
+     */
+    List<VectorSearchResult> keywordSearch(String index, String query, int topK,
+                                           Map<String, Object> filters);
+
+    /**
+     * KNN + BM25 混合检索，使用 RRF 合并两路候选结果。
+     */
+    List<VectorSearchResult> hybridSearch(String index, String query, float[] queryVector,
+                                           int topK, Map<String, Object> filters);
+
+    /**
      * 删除向量
      *
      * @param index 索引名称
@@ -53,4 +65,3 @@ public interface VectorStoreService {
      */
     void deleteByField(String index, String fieldName, Object fieldValue);
 }
-

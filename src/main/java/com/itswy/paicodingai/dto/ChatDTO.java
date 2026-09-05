@@ -30,8 +30,13 @@ public class ChatDTO {
      */
     private String sessionId;
 
+    /** 可选的知识库用户标识；未接入登录系统时由后端回退为 0。 */
+    private String userId;
+
     public String getQuestion() { return question; }
     public void setQuestion(String question) { this.question = question; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 }

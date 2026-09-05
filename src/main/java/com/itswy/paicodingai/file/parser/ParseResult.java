@@ -16,6 +16,9 @@ public class ParseResult {
     /** 文本分块列表 */
     private List<String> chunks;
 
+    /** 统一的结构化内容块。 */
+    private List<ContentBlock> contentBlocks;
+
     /** 文档类型 */
     private String fileType;
 
@@ -38,12 +41,26 @@ public class ParseResult {
         this.chunks = chunks;
         this.fileType = fileType;
         this.fileSize = fileSize;
+        this.contentBlocks = List.of();
+        this.success = true;
+    }
+
+    public ParseResult(String title, String content, List<ContentBlock> contentBlocks,
+                       String fileType, Long fileSize, boolean structured) {
+        this.title = title;
+        this.content = content;
+        this.contentBlocks = contentBlocks;
+        this.fileType = fileType;
+        this.fileSize = fileSize;
+        this.chunks = List.of();
         this.success = true;
     }
 
     public ParseResult(String errorMessage) {
         this.success = false;
         this.errorMessage = errorMessage;
+        this.chunks = List.of();
+        this.contentBlocks = List.of();
     }
 
     // Getters and Setters
@@ -55,6 +72,9 @@ public class ParseResult {
 
     public List<String> getChunks() { return chunks; }
     public void setChunks(List<String> chunks) { this.chunks = chunks; }
+
+    public List<ContentBlock> getContentBlocks() { return contentBlocks; }
+    public void setContentBlocks(List<ContentBlock> contentBlocks) { this.contentBlocks = contentBlocks; }
 
     public String getFileType() { return fileType; }
     public void setFileType(String fileType) { this.fileType = fileType; }

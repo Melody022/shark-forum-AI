@@ -17,4 +17,6 @@ import lombok.NoArgsConstructor;
 public class AgentContext {
     private String sessionId;
     private String requestId;
+    /** 用于知识库检索的用户隔离标识。 */
+    private String userId;
 }
