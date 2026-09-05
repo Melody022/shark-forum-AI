@@ -38,7 +38,7 @@ public class ChatController {
     public Flux<ChatEventVO> chat(@RequestBody ChatDTO chatDTO) {
         log.info("收到聊天请求：question={}, sessionId={}, userId={}",
                 chatDTO.getQuestion(), chatDTO.getSessionId(), chatDTO.getUserId());
-        return this.chatService.chat(chatDTO.getQuestion(), chatDTO.getSessionId(), chatDTO.getUserId());
+        return this.chatService.chat(chatDTO.getQuestion(), chatDTO.getSessionId(), chatDTO.getUserId(), chatDTO.getImageUrls());
     }
 
     /**

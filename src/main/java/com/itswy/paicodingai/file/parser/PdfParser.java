@@ -28,9 +28,12 @@ public class PdfParser implements DocumentParser {
 
     private final OcrService ocrService;
 
+    private final LiteParseDocumentParser liteParseDocumentParser;
+
     @Autowired
-    public PdfParser(OcrService ocrService) {
+    public PdfParser(OcrService ocrService, LiteParseDocumentParser liteParseDocumentParser) {
         this.ocrService = ocrService;
+        this.liteParseDocumentParser = liteParseDocumentParser;
     }
 
     private static final Pattern NUMBERED_HEADING = Pattern.compile(
@@ -49,6 +52,11 @@ public class PdfParser implements DocumentParser {
 
     @Override
     public ParseResult parse(File file) {
+        ParseResult liteParseResult = liteParseDocumentParser.parse(file);
+        if (liteParseResult.isSuccess() && liteParseResult.getContentBlocks() != null
+                && !liteParseResult.getContentBlocks().isEmpty()) {
+            return liteParseResult;
+        }
         try (PDDocument document = Loader.loadPDF(file)) {
             List<ContentBlock> blocks = new ArrayList<>();
             Deque<String> sectionNames = new ArrayDeque<>();

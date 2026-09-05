@@ -15,6 +15,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -48,6 +49,11 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public Flux<ChatEventVO> chat(String question, String sessionId, String userId) {
+        return chat(question, sessionId, userId, List.of());
+    }
+
+    @Override
+    public Flux<ChatEventVO> chat(String question, String sessionId, String userId, List<String> imageUrls) {
         log.info("用户提问：{}，会话：{}", question, sessionId);
 
         var requestId = generateRequestId();
@@ -61,7 +67,11 @@ public class ChatServiceImpl implements ChatService {
         String title = question.length() > 20 ? question.substring(0, 20) + "..." : question;
         chatSessionService.update(sessionId, title, 0L);
 
-        return paicodingAgent.chat(question, ctx)
+        Flux<ChatEventVO> responseFlux = imageUrls == null || imageUrls.isEmpty()
+                ? paicodingAgent.chat(question, ctx)
+                : paicodingAgent.chat(question, ctx, imageUrls);
+
+        return responseFlux
             // 生成开始时，在Redis中设置标记
             .doFirst(() -> {
                 String key = GENERATE_STATUS_KEY + sessionId;

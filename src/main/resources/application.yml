@@ -30,11 +30,11 @@ spring:
 
   ai:
     openai:
-      base-url: ${AI_BASE_URL:https://api.deepseek.com}
-      api-key: ${AI_API_KEY:}
+      base-url: ${AI_BASE_URL:${MIMO_BASE_URL:https://api.xiaomimimo.com/v1}}
+      api-key: ${AI_API_KEY:${MIMO_API_KEY:}}
       chat:
         options:
-          model: ${AI_MODEL:deepseek-chat}
+          model: ${AI_MODEL:${MIMO_MODEL:mimo-v2.5}}
         memory:
           redis:
             enabled: true
@@ -117,3 +117,24 @@ rag:
     parent-max-chars: ${RAG_PARENT_MAX_CHARS:6000}
     child-max-chars: ${RAG_CHILD_MAX_CHARS:1800}
     child-overlap-chars: ${RAG_CHILD_OVERLAP_CHARS:240}
+
+# 当前聊天默认使用 MIMO 多模态模型；Embedding 仍由独立配置管理。
+mimo:
+  api:
+    base-url: ${MIMO_BASE_URL:https://api.xiaomimimo.com/v1}
+    model: ${MIMO_MODEL:mimo-v2.5}
+    key: ${MIMO_API_KEY:}
+
+model-provider:
+  security:
+    secret-key: ${MODEL_PROVIDER_SECRET_KEY:dev-only-change-me}
+
+deepseek:
+  api:
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
+    key: ${DEEPSEEK_API_KEY:${AI_API_KEY:}}
+
+admin:
+  rag:
+    token: ${ADMIN_RAG_TOKEN:}

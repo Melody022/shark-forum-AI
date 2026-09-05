@@ -1,5 +1,7 @@
 package com.itswy.paicodingai.dto;
 
+import java.util.List;
+
 /**
  * ==========================================================================
  * 聊天请求参数 —— 前端发来的消息
@@ -33,10 +35,15 @@ public class ChatDTO {
     /** 可选的知识库用户标识；未接入登录系统时由后端回退为 0。 */
     private String userId;
 
+    /** 多模态图片，当前支持浏览器生成的 data URL 或可访问的 HTTPS URL。 */
+    private List<String> imageUrls;
+
     public String getQuestion() { return question; }
     public void setQuestion(String question) { this.question = question; }
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+    public List<String> getImageUrls() { return imageUrls; }
+    public void setImageUrls(List<String> imageUrls) { this.imageUrls = imageUrls; }
 }

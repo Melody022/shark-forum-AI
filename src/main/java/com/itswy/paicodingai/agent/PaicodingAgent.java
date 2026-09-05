@@ -15,9 +15,17 @@ import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.ai.content.Media;
+import org.springframework.util.MimeType;
+import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.stream.Collectors;
 
 /**
@@ -79,6 +87,65 @@ public class PaicodingAgent extends AbstractAgent {
 
         // 3. 调用LLM（带工具）
         return doChat(question, finalPrompt, ctx, skillNode);
+    }
+
+    /**
+     * 多模态对话仍复用 ChatClient、ChatMemory、Tool Calling 和 RAG，只额外附加图片媒体。
+     */
+    @Override
+    public Flux<ChatEventVO> chat(String question, AgentContext ctx, List<String> imageUrls) {
+        SkillNode skillNode = skillRouter.route(question == null ? "" : question);
+        String finalPrompt = appendRagContext(buildSystemPromptWithSkillIndex(skillNode), question, ctx);
+        List<Advisor> advisors = extraAdvisors();
+        List<Media> media = imageUrls == null ? List.of() : imageUrls.stream().map(this::toMedia).toList();
+
+        return chatClient.prompt()
+                .system(finalPrompt)
+                .user(user -> {
+                    user.text(question == null || question.isBlank() ? "请分析图片。" : question);
+                    if (!media.isEmpty()) {
+                        user.media(media.toArray(Media[]::new));
+                    }
+                })
+                .advisors(a -> {
+                    a.advisors(advisors);
+                    a.param(ChatMemory.CONVERSATION_ID, ctx.getSessionId());
+                })
+                .tools(skillLoadTool, articleTools, courseTools)
+                .toolContext(java.util.Map.of("requestId", ctx.getRequestId()))
+                .stream()
+                .chatResponse()
+                .map(response -> ChatEventVO.data(response.getResult().getOutput().getText()))
+                .concatWith(getToolResult(ctx.getRequestId()));
+    }
+
+    private Media toMedia(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("图片地址不能为空");
+        }
+        if (value.startsWith("data:")) {
+            int comma = value.indexOf(',');
+            if (comma < 0) {
+                throw new IllegalArgumentException("图片 data URL 格式无效");
+            }
+            String header = value.substring(5, comma);
+            String encoded = value.substring(comma + 1);
+            if (!header.endsWith(";base64")) {
+                throw new IllegalArgumentException("图片 data URL 必须使用 base64");
+            }
+            String mimeName = header.substring(0, header.length() - ";base64".length());
+            MimeType mimeType = MimeTypeUtils.parseMimeType(mimeName);
+            byte[] bytes = Base64.getDecoder().decode(encoded);
+            return Media.builder().mimeType(mimeType).data(new ByteArrayResource(bytes)).build();
+        }
+        try {
+            URI uri = URI.create(value);
+            MimeType mimeType = value.toLowerCase().endsWith(".png")
+                    ? MimeTypeUtils.IMAGE_PNG : MimeTypeUtils.IMAGE_JPEG;
+            return new Media(mimeType, uri);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("图片 URL 格式无效", e);
+        }
     }
 
     /**

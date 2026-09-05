@@ -4,6 +4,8 @@ import com.itswy.paicodingai.skill.Skill;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import reactor.core.publisher.Flux;
 
+import java.util.List;
+
 /**
  * Agent接口
  *
@@ -29,6 +31,11 @@ public interface Agent {
      * @return 流式响应
      */
     Flux<ChatEventVO> chat(String question, AgentContext ctx);
+
+    /** 带图片媒体的多模态对话。 */
+    default Flux<ChatEventVO> chat(String question, AgentContext ctx, List<String> imageUrls) {
+        return chat(question, ctx);
+    }
 
     /**
      * 处理用户问题（带Skill）
