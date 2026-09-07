@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,10 @@ public class KnowledgeService implements CommandLineRunner {
     private final VectorStore vectorStore;
     private final SemanticTextSplitter textSplitter;
     private final ObjectMapper objectMapper;
+
+    /** 内存版 RAG 演示已废弃(主 RAG 走 ES 知识库);默认不启动播种,避免无 key 调用 Embedding。 */
+    @Value("${rag.demo.seed-enabled:false}")
+    private boolean seedEnabled;
 
     /** 存储原始文档（用于管理页面展示） */
     private final Map<String, DocumentInfo> documentStore = new ConcurrentHashMap<>();
@@ -163,6 +168,10 @@ public class KnowledgeService implements CommandLineRunner {
      */
     @Override
     public void run(String... args) throws Exception {
+        if (!seedEnabled) {
+            log.info("rag.demo.seed-enabled=false,跳过内存 RAG 种子加载(默认关闭,主 RAG 走 ES 知识库)");
+            return;
+        }
         log.info("开始加载知识库种子数据...");
 
         try {

@@ -1,6 +1,5 @@
 package com.itswy.paicodingai.agent;
 
-import com.itswy.paicodingai.config.SystemPromptConfig;
 import com.itswy.paicodingai.knowledge.service.SearchResult;
 import com.itswy.paicodingai.knowledge.service.VectorSearchService;
 import com.itswy.paicodingai.rag.service.KnowledgeService;
@@ -30,7 +29,6 @@ import java.util.stream.Collectors;
 public abstract class AbstractAgent implements Agent {
 
     protected final ChatClient chatClient;
-    protected final SystemPromptConfig promptConfig;
 
     /** 知识库服务（RAG）- 可选注入 */
     @Autowired(required = false)
@@ -46,9 +44,8 @@ public abstract class AbstractAgent implements Agent {
     /** RAG检索数量（子类可覆盖） */
     protected int ragTopK = 3;
 
-    public AbstractAgent(ChatClient chatClient, SystemPromptConfig promptConfig) {
+    public AbstractAgent(ChatClient chatClient) {
         this.chatClient = chatClient;
-        this.promptConfig = promptConfig;
     }
 
     /**
@@ -103,10 +100,7 @@ public abstract class AbstractAgent implements Agent {
             .toolContext(Map.of("requestId", ctx.getRequestId()))
             .stream()
             .chatResponse()
-            .map(response -> {
-                var text = response.getResult().getOutput().getText();
-                return ChatEventVO.data(text);
-            })
+            .flatMap(AbstractAgent::mapTextEvent)
             .concatWith(getToolResult(ctx.getRequestId()));
     }
 
@@ -187,5 +181,16 @@ public abstract class AbstractAgent implements Agent {
             return Flux.just(ChatEventVO.param(result));
         }
         return Flux.empty();
+    }
+
+    /**
+     * 把流式分片安全转成 DATA 事件:结果/文本为空的分片(如纯工具调用帧)直接跳过,避免 NPE 与空事件。
+     */
+    protected static Flux<ChatEventVO> mapTextEvent(org.springframework.ai.chat.model.ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return Flux.empty();
+        }
+        String text = response.getResult().getOutput().getText();
+        return (text == null || text.isBlank()) ? Flux.empty() : Flux.just(ChatEventVO.data(text));
     }
 }

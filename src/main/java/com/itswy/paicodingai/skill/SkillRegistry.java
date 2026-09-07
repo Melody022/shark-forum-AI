@@ -1,14 +1,10 @@
 package com.itswy.paicodingai.skill;
 
+import com.itswy.paicodingai.service.prompt.PromptStoreService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,125 +12,87 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Skill注册中心 - 加载和管理所有skills
+ * Skill 注册中心(DB 驱动)。
  *
- * 扫描skills目录，解析SKILL.md文件
+ * <p>Skill 全文(含 frontmatter)改存 ai_prompt(prompt_type=SKILL,key=skill.{name}),
+ * 启动/重载时从 {@link PromptStoreService} 读取(Redis→DB→classpath 种子兜底)。
+ * 管理端「发布 SKILL」后调用 {@link #reload()} 即热生效。</p>
  */
 @Slf4j
 @Component
 public class SkillRegistry {
 
-    @Value("classpath:skills/*")
-    private Resource[] skillDirs;
+    private final PromptStoreService promptStoreService;
 
     private final Map<String, Skill> skillsByName = new LinkedHashMap<>();
     private final List<String> warnings = new ArrayList<>();
 
+    public SkillRegistry(PromptStoreService promptStoreService) {
+        this.promptStoreService = promptStoreService;
+    }
+
     @PostConstruct
     public void init() {
         loadSkills();
-        log.info("Skill加载完成，共 {} 个skill", skillsByName.size());
+        log.info("Skill加载完成(DB),共 {} 个skill", skillsByName.size());
     }
 
-    /**
-     * 加载所有skills
-     */
     private void loadSkills() {
         skillsByName.clear();
         warnings.clear();
 
-        try {
-            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources("classpath:skills/*/SKILL.md");
-
-            for (Resource resource : resources) {
-                try {
-                    Path skillMdPath = resource.getFile().toPath();
-                    Path skillDir = skillMdPath.getParent();
-                    String skillName = skillDir.getFileName().toString();
-
-                    String content = Files.readString(skillMdPath);
-                    SkillFrontmatterParser.ParseResult parsed = SkillFrontmatterParser.parse(content);
-
-                    // 收集警告
-                    warnings.addAll(parsed.warnings());
-
-                    // 解析frontmatter
-                    Map<String, Object> fm = parsed.frontmatter();
-                    String name = getStringValue(fm, "name", skillName);
-                    String description = getStringValue(fm, "description", "");
-                    String version = getStringValue(fm, "version", "1.0.0");
-                    List<String> tags = getListValue(fm, "tags");
-
-                    // 创建Skill对象
-                    Skill skill = new Skill(
-                            name,
-                            description,
-                            version,
-                            tags,
-                            parsed.body(),
-                            skillMdPath
-                    );
-
-                    skillsByName.put(name, skill);
-                    log.debug("加载Skill: {} - {}", name, description);
-
-                } catch (IOException e) {
-                    String errorMsg = "读取SKILL.md失败: " + resource.getFilename();
-                    warnings.add(errorMsg);
-                    log.warn(errorMsg, e);
-                }
+        for (PromptStoreService.SeedDef def : PromptStoreService.SEEDS) {
+            if (!PromptStoreService.TYPE_SKILL.equals(def.type())) {
+                continue;
             }
+            String content = promptStoreService.getContent(def.key());
+            if (content == null || content.isBlank()) {
+                warnings.add("Skill 内容为空: " + def.key());
+                continue;
+            }
+            try {
+                SkillFrontmatterParser.ParseResult parsed = SkillFrontmatterParser.parse(content);
+                warnings.addAll(parsed.warnings());
 
-        } catch (IOException e) {
-            String errorMsg = "扫描skills目录失败";
-            warnings.add(errorMsg);
-            log.error(errorMsg, e);
+                Map<String, Object> fm = parsed.frontmatter();
+                String fallbackName = def.key().startsWith("skill.") ? def.key().substring("skill.".length()) : def.key();
+                String name = valueAsString(fm, "name", fallbackName);
+                String description = valueAsString(fm, "description", def.name());
+                String version = valueAsString(fm, "version", "1.0.0");
+                List<String> tags = fm.get("tags") instanceof List<?> list
+                        ? list.stream().filter(it -> it instanceof String).map(String.class::cast).toList()
+                        : List.of();
+
+                Skill skill = new Skill(name, description, version, tags, parsed.body(), null);
+                skillsByName.put(name, skill);
+                log.debug("加载Skill(DB): {} - {}", name, description);
+            } catch (Exception e) {
+                warnings.add("解析 Skill 失败: " + def.key() + " - " + e.getMessage());
+                log.warn("解析 Skill 失败: {}", def.key(), e);
+            }
         }
     }
 
-    /**
-     * 根据名称查找skill
-     */
     public Skill findSkill(String name) {
         return skillsByName.get(name);
     }
 
-    /**
-     * 获取所有skills
-     */
     public List<Skill> findAll() {
         return new ArrayList<>(skillsByName.values());
     }
 
-    /**
-     * 获取所有warnings
-     */
     public List<String> getWarnings() {
         return List.copyOf(warnings);
     }
 
-    /**
-     * 重新加载skills
-     */
+    /** 管理端发布/更新 SKILL 后调用,重新从 DB 加载。 */
     public void reload() {
         loadSkills();
+        log.info("Skill 已重载,共 {} 个", skillsByName.size());
     }
 
-    private String getStringValue(Map<String, Object> fm, String key, String defaultValue) {
-        Object value = fm.get(key);
-        return value instanceof String ? (String) value : defaultValue;
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<String> getListValue(Map<String, Object> fm, String key) {
-        Object value = fm.get(key);
-        if (value instanceof List<?> list) {
-            return list.stream()
-                    .filter(item -> item instanceof String)
-                    .map(item -> (String) item)
-                    .toList();
-        }
-        return List.of();
+    private String valueAsString(Map<String, Object> fm, String key, String def) {
+        Object v = fm.get(key);
+        return v instanceof String s ? s : def;
     }
 }

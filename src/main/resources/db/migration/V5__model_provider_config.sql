@@ -17,12 +17,6 @@ CREATE TABLE IF NOT EXISTS model_provider_config (
     KEY idx_model_provider_scope (config_scope)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运行时模型 Provider 配置';
 
-INSERT INTO model_provider_config
-    (config_scope, provider_code, display_name, api_style, api_base_url, model_name, enabled, active, updated_by)
-VALUES
-    ('llm', 'mimo', '小米 MiMo', 'openai-compatible', 'https://api.xiaomimimo.com/v1', 'mimo-v2.5', 1, 1, 'migration'),
-    ('llm', 'deepseek', 'DeepSeek', 'openai-compatible', 'https://api.deepseek.com/v1', 'deepseek-chat', 1, 0, 'migration')
-ON DUPLICATE KEY UPDATE
-    display_name = VALUES(display_name),
-    api_style = VALUES(api_style),
-    updated_at = CURRENT_TIMESTAMP;
+-- 注意:不再插入硬编码 provider 种子(曾写死失效域名且 active=1;DB 优先级高于 env,
+-- 重建库时会用旧地址覆盖 .env 正确值导致 401)。Provider 由 ModelProviderService 先取环境变量默认,
+-- 管理员在后台保存后才落库(model_provider_config 表)。

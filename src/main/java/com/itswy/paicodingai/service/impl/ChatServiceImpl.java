@@ -2,11 +2,12 @@ package com.itswy.paicodingai.service.impl;
 
 import com.itswy.paicodingai.agent.AgentContext;
 import com.itswy.paicodingai.agent.PaicodingAgent;
-import com.itswy.paicodingai.config.SystemPromptConfig;
+import com.itswy.paicodingai.config.AuthContext;
 import com.itswy.paicodingai.enums.ChatEventTypeEnum;
 import com.itswy.paicodingai.memory.util.RedisUtils;
 import com.itswy.paicodingai.service.ChatService;
 import com.itswy.paicodingai.service.ChatSessionService;
+import com.itswy.paicodingai.service.prompt.PromptAssembler;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,7 @@ public class ChatServiceImpl implements ChatService {
     public static final ChatEventVO STOP_EVENT = new ChatEventVO(null, ChatEventTypeEnum.STOP.getValue());
 
     private final ChatClient chatClient;
-    private final SystemPromptConfig systemPromptConfig;
+    private final PromptAssembler promptAssembler;
     private final RedisUtils redisUtils;
     private final PaicodingAgent paicodingAgent;
     private final ChatSessionService chatSessionService;
@@ -57,10 +58,15 @@ public class ChatServiceImpl implements ChatService {
         log.info("用户提问：{}，会话：{}", question, sessionId);
 
         var requestId = generateRequestId();
+        // 身份:已登录走 AuthContext,否则沿用入参(旧前端固定 '0');角色决定工具白名单
+        String resolvedUser = AuthContext.get() != null
+                ? AuthContext.currentUserId()
+                : (userId == null || userId.isBlank() ? "0" : userId);
         AgentContext ctx = AgentContext.builder()
             .sessionId(sessionId)
             .requestId(requestId)
-            .userId(userId == null || userId.isBlank() ? "0" : userId)
+            .userId(resolvedUser)
+            .roleCode(AuthContext.currentRole())
             .build();
 
         // 更新会话标题（取问题前20个字符）
@@ -100,7 +106,18 @@ public class ChatServiceImpl implements ChatService {
                 return status != null;
             })
             // 添加STOP事件
-            .concatWith(Flux.just(STOP_EVENT));
+            .concatWith(Flux.just(STOP_EVENT))
+            // SSE 错误兜底:把真实异常转成可读文本事件,避免裸异常冒泡到 /error 导致 HttpMessageNotWritableException 掩盖原因
+            .onErrorResume(throwable -> {
+                clearGenerateStatus(sessionId);
+                String msg = throwable.getMessage() == null
+                        ? throwable.getClass().getSimpleName()
+                        : throwable.getMessage();
+                if (msg.length() > 200) {
+                    msg = msg.substring(0, 200) + "…";
+                }
+                return Flux.just(ChatEventVO.data("抱歉，服务出错了：" + msg), STOP_EVENT);
+            });
     }
 
     @Override
@@ -112,7 +129,7 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public String chatText(String question) {
         return this.chatClient.prompt()
-                .system(this.systemPromptConfig.getSystemMessage("paicoding"))
+                .system(this.promptAssembler.assembleMain())
                 .user(question)
                 .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "text-mode"))
                 .call()

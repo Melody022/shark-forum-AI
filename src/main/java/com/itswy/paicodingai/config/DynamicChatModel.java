@@ -2,6 +2,8 @@ package com.itswy.paicodingai.config;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.OpenAIClientImpl;
+import com.openai.client.OpenAIClientAsync;
+import com.openai.client.OpenAIClientAsyncImpl;
 import com.openai.core.ClientOptions;
 import com.itswy.paicodingai.service.ModelProviderService;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -61,28 +63,37 @@ public class DynamicChatModel implements ChatModel {
 
     private ChatModel delegate() {
         ModelProviderService.ActiveProvider provider = providerService.getActiveLlmProvider();
-        String cacheKey = provider.providerCode() + "|" + provider.apiBaseUrl() + "|"
-                + provider.model() + "|" + provider.apiKey();
-        return delegates.computeIfAbsent(cacheKey, ignored -> createDelegate(provider));
+        return getChatModel(provider.apiBaseUrl(), provider.model(), provider.apiKey());
     }
 
-    private ChatModel createDelegate(ModelProviderService.ActiveProvider provider) {
+    /** 按参数构建/复用 OpenAI-compatible delegate（供小模型等按用途取模型的场景使用）。 */
+    public ChatModel getChatModel(String apiBaseUrl, String model, String apiKey) {
+        String baseUrl = ModelProviderService.normalizeBaseUrl(apiBaseUrl);
+        String cacheKey = baseUrl + "|" + model + "|" + (apiKey == null ? "" : apiKey);
+        return delegates.computeIfAbsent(cacheKey, ignored -> buildDelegate(baseUrl, model, apiKey));
+    }
+
+    private ChatModel buildDelegate(String baseUrl, String model, String apiKey) {
         ClientOptions.Builder options = ClientOptions.builder()
-                .baseUrl(ModelProviderService.normalizeBaseUrl(provider.apiBaseUrl()))
+                .baseUrl(baseUrl)
                 .timeout(Duration.ofMinutes(5))
                 .maxRetries(2)
                 .httpClient(SpringAiOpenAiHttpClient.builder().timeout(Duration.ofMinutes(5)).build());
-        if (provider.apiKey() != null && !provider.apiKey().isBlank()) {
-            options.apiKey(provider.apiKey());
-        }
+        // OpenAI Java client 强制要求 credential。Ollama 等本地服务无需鉴权,空 key 给占位值以满足 builder
+        // (本地服务会忽略该 header;真 provider 缺 key 会在真实请求时 401,提示补充即可)。
+        String effectiveApiKey = (apiKey == null || apiKey.isBlank()) ? "sk-local-no-auth" : apiKey;
+        options.apiKey(effectiveApiKey);
         OpenAIClient client = new OpenAIClientImpl(options.build());
+        // spring-ai 2.0 的 OpenAiChatModel 同时要求 sync + async 客户端,否则 build 时走 OpenAiSetup 自建并报缺 credential
+        OpenAIClientAsync clientAsync = new OpenAIClientAsyncImpl(options.build());
         OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .model(provider.model())
+                .model(model)
                 .temperature(0.3)
                 .streamUsage(true)
                 .build();
         return OpenAiChatModel.builder()
                 .openAiClient(client)
+                .openAiClientAsync(clientAsync)
                 .options(chatOptions)
                 .toolCallingManager(toolCallingManager)
                 .build();

@@ -1,41 +1,28 @@
 package com.itswy.paicodingai.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.util.List;
 
 /**
  * ==========================================================================
  * 聊天请求参数 —— 前端发来的消息
  * ==========================================================================
- *
- * 前端 POST /ai/chat 时传的 JSON 体：
- * {
- *     "question": "Java怎么学？",
- *     "sessionId": "abc-def-ghi"
- * }
- *
- * 这个类就是用来接收这个 JSON 的。
- *
- * @date 2026-07-18
  */
+@Schema(description = "聊天(SSE 流式)请求体")
 public class ChatDTO {
 
-    /**
-     * 用户的问题文本
-     * 比如："Java怎么学？"、"Spring Boot是什么？"
-     */
+    @Schema(description = "用户问题/消息文本", example = "能帮我推荐一个合适的教程吗？", requiredMode = Schema.RequiredMode.REQUIRED)
     private String question;
 
-    /**
-     * 会话ID
-     * 前端在创建会话时拿到 sessionId，
-     * 之后聊天一直带着它，表示"我在这个对话里说话"
-     */
+    @Schema(description = "会话 ID。首次可空(后端按当前登录用户自动建会话)或填已有会话继续对话", example = "072f2a276fe446ca8daf955418a41881")
     private String sessionId;
 
-    /** 可选的知识库用户标识；未接入登录系统时由后端回退为 0。 */
+    @Schema(description = "用户 ID;登录后由后端从 token 取,通常无需传(可留空)", defaultValue = "0", example = "1")
     private String userId;
 
-    /** 多模态图片，当前支持浏览器生成的 data URL 或可访问的 HTTPS URL。 */
+    @Schema(description = "多模态图片:base64 data URL 或 HTTPS URL,最多 4 张,每张 ≤8MB;文本问答可不传",
+            example = "[\"data:image/png;base64,iVBORw0KGgo=\"]")
     private List<String> imageUrls;
 
     public String getQuestion() { return question; }

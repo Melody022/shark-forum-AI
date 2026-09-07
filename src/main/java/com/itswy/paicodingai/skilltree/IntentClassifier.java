@@ -1,5 +1,6 @@
 package com.itswy.paicodingai.skilltree;
 
+import com.itswy.paicodingai.config.IntentRoutingProperties;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,9 +11,9 @@ import java.util.List;
 /**
  * 意图分类器 - 三层漏斗架构
  *
- * 1. 规则匹配（关键词+正则）
- * 2. DeepSeek小模型
- * 3. 大模型兜底（详细prompt+few-shot）
+ * 1. 规则匹配(关键词+正则,快通,零成本)
+ * 2. 小模型(默认本地 Ollama,置信度≥阈值才接受)
+ * 3. 大模型兜底(激活 provider,默认 MIMO;详细 prompt+few-shot)
  */
 @Slf4j
 @Component
@@ -23,6 +24,7 @@ public class IntentClassifier {
     private final DeepSeekSmallModelClassifier smallModelClassifier;
     private final LargeModelClassifier largeModelClassifier;
     private final SkillTreeManager skillTreeManager;
+    private final IntentRoutingProperties routingProperties;
 
     /** 小模型置信度阈值 */
     private static final double SMALL_MODEL_THRESHOLD = 0.7;
@@ -37,14 +39,19 @@ public class IntentClassifier {
 
         log.info("开始意图分类: {}", userInput);
 
-        // 第1层：规则匹配
+        // 第1层：规则匹配(快通)
         ClassifyResult ruleResult = ruleClassifier.classify(userInput);
         if (ruleResult != null) {
             log.info("第1层规则匹配成功: {} → {}", userInput, ruleResult.getIntent());
             return ruleResult;
         }
 
-        // 第2层：DeepSeek小模型
+        if (!routingProperties.isEnabled()) {
+            log.info("意图模型层已关闭(ai.routing.enabled=false),使用默认: {}", userInput);
+            return createDefaultResult();
+        }
+
+        // 第2层：小模型
         ClassifyResult smallModelResult = smallModelClassifier.classify(userInput);
         if (smallModelResult != null && smallModelResult.getConfidence() >= SMALL_MODEL_THRESHOLD) {
             log.info("第2层小模型成功: {} → {} (置信度: {})",
@@ -52,7 +59,7 @@ public class IntentClassifier {
             return smallModelResult;
         }
 
-        // 第3层：大模型兜底（使用详细prompt+few-shot）
+        // 第3层：大模型兜底(使用详细prompt+few-shot)
         log.info("第3层大模型兜底: {}", userInput);
         ClassifyResult largeModelResult = largeModelClassifier.classify(userInput);
         if (largeModelResult != null) {

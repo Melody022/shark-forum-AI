@@ -19,28 +19,40 @@ public class SkillRouter {
     private final IntentClassifier intentClassifier;
 
     /**
+     * 三级漏斗意图分类(路由前置,供可见事件/分流使用)。
+     */
+    public ClassifyResult classify(String userInput) {
+        return intentClassifier.classify(userInput);
+    }
+
+    /**
+     * 根据意图结果解析 SkillNode;找不到则默认通用对话。
+     */
+    public SkillNode resolve(ClassifyResult classifyResult) {
+        if (classifyResult == null) {
+            return skillTreeManager.getNode("general-category");
+        }
+        SkillNode selected = skillTreeManager.getNode(classifyResult.getIntent());
+        if (selected == null) {
+            selected = findSimilarNode(classifyResult.getIntent());
+        }
+        if (selected == null) {
+            selected = skillTreeManager.getNode("general-category");
+            log.warn("未找到匹配的Skill，使用默认: general-category (intent={})", classifyResult.getIntent());
+        }
+        return selected;
+    }
+
+    /**
      * 路由选择Skill
      */
     public SkillNode route(String userInput) {
         log.info("Skill Router开始处理: {}", userInput);
 
-        // 使用意图分类器（三级漏斗）
-        ClassifyResult classifyResult = intentClassifier.classify(userInput);
+        ClassifyResult classifyResult = classify(userInput);
         log.info("意图分类结果: {}", classifyResult);
 
-        // 根据意图查找SkillNode
-        SkillNode selected = skillTreeManager.getNode(classifyResult.getIntent());
-
-        if (selected == null) {
-            // 如果找不到对应的节点，尝试模糊匹配
-            selected = findSimilarNode(classifyResult.getIntent());
-        }
-
-        if (selected == null) {
-            // 默认返回通用对话
-            selected = skillTreeManager.getNode("general-category");
-            log.warn("未找到匹配的Skill，使用默认: general-category");
-        }
+        SkillNode selected = resolve(classifyResult);
 
         log.info("路由完成: {} → {} (置信度: {}, 方法: {})",
             userInput, selected.getId(), classifyResult.getConfidence(), classifyResult.getMethod());

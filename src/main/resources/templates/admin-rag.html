@@ -4,6 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RAG 控制台</title>
+    <script>
+      (function(){
+        var LS_KEY='paicoding_ai_token';
+        var orig=window.fetch;
+        window.fetch=function(url,opts){
+          opts=opts||{};
+          var t=localStorage.getItem(LS_KEY);
+          if(t){opts.headers=Object.assign({},opts.headers||{}, {'Authorization':'Bearer '+t});}
+          return orig.call(this,url,opts).then(function(resp){
+            if(resp.status===401 || resp.status===403){
+              // 未登录/无权限 → 引导到总控台登录
+              if(location.pathname.indexOf('/admin/console')<0){
+                location.href='/admin/console';
+              }
+            }
+            return resp;
+          });
+        };
+      })();
+    </script>
     <style>
         :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;color:#18212f;background:#f5f7fb}
         *{box-sizing:border-box}body{margin:0}.shell{max-width:1180px;margin:0 auto;padding:32px 22px 60px}

@@ -1,37 +1,40 @@
 package com.itswy.paicodingai.agent;
 
-import com.itswy.paicodingai.config.SystemPromptConfig;
+import com.itswy.paicodingai.entity.AgentDefinition;
+import com.itswy.paicodingai.mcp.McpServerManager;
+import com.itswy.paicodingai.service.HumanQueueService;
+import com.itswy.paicodingai.service.prompt.PromptAssembler;
 import com.itswy.paicodingai.skill.Skill;
-import com.itswy.paicodingai.skill.SkillRegistry;
+import com.itswy.paicodingai.skilltree.ClassifyResult;
 import com.itswy.paicodingai.skilltree.SkillNode;
 import com.itswy.paicodingai.skilltree.SkillRouter;
 import com.itswy.paicodingai.skilltree.SkillTreeManager;
-import com.itswy.paicodingai.tools.ArticleTools;
-import com.itswy.paicodingai.tools.CourseTools;
+import com.itswy.paicodingai.tools.ToolRegistry;
 import com.itswy.paicodingai.vo.ChatEventVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.content.Media;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.ai.content.Media;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import reactor.core.publisher.Flux;
 
-import java.util.List;
-import java.util.ArrayList;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * PaicodingAgent - 单一Agent
+ * 主 Agent(DB 驱动,单 Agent + 多 skill/tool)。
  *
- * 处理所有用户请求，通过Skill Router选择合适的Skill
+ * <p>系统提示词来自 {@link PromptAssembler}(ai_prompt,base+agent);
+ * 工具集由 {@link AgentFactory} 按「角色白名单 ∩ ai_agent 声明」计算并经 {@link ToolRegistry} 还原实例,
+ * 不再硬编码 .tools(skillLoadTool, articleTools, courseTools)。</p>
  */
 @Slf4j
 @Component
@@ -44,19 +47,26 @@ public class PaicodingAgent extends AbstractAgent {
     private SkillTreeManager skillTreeManager;
 
     @Autowired
-    private SkillRegistry skillRegistry;
+    private AgentFactory agentFactory;
 
     @Autowired
-    private ArticleTools articleTools;
+    private ToolRegistry toolRegistry;
 
     @Autowired
-    private CourseTools courseTools;
+    private PromptAssembler promptAssembler;
 
     @Autowired
-    private SkillLoadTool skillLoadTool;
+    private McpServerManager mcpServerManager;
 
-    public PaicodingAgent(ChatClient chatClient, SystemPromptConfig promptConfig) {
-        super(chatClient, promptConfig);
+    @Autowired
+    private HumanQueueService humanQueueService;
+
+    /** 转人工意图 id(与分类器/规则一致)。 */
+    public static final String INTENT_HUMAN_SERVICE = "human-service";
+
+    public PaicodingAgent(ChatClient chatClient, PromptAssembler promptAssembler) {
+        super(chatClient);
+        this.promptAssembler = promptAssembler;
     }
 
     @Override
@@ -71,7 +81,9 @@ public class PaicodingAgent extends AbstractAgent {
 
     @Override
     protected String getSystemPrompt() {
-        return promptConfig.getSystemMessage("paicoding");
+        AgentDefinition def = agentFactory.getAgent(AgentFactory.DEFAULT_AGENT_CODE);
+        String promptKey = def != null ? def.getPromptKey() : null;
+        return promptAssembler.assemble(promptKey);
     }
 
     /**
@@ -79,14 +91,19 @@ public class PaicodingAgent extends AbstractAgent {
      */
     @Override
     public Flux<ChatEventVO> chat(String question, AgentContext ctx) {
-        // 1. 路由选择Skill
-        SkillNode skillNode = skillRouter.route(question);
-
-        // 2. 构建系统提示词（包含Skill索引）
+        ClassifyResult classifyResult = skillRouter.classify(question);
+        // 转人工:不入模型,直接入队 + 话术
+        if (INTENT_HUMAN_SERVICE.equals(classifyResult.getIntent())) {
+            return humanServiceFlow(classifyResult, ctx);
+        }
+        SkillNode skillNode = skillRouter.resolve(classifyResult);
         String finalPrompt = buildSystemPromptWithSkillIndex(skillNode);
-
-        // 3. 调用LLM（带工具）
-        return doChat(question, finalPrompt, ctx, skillNode);
+        List<Object> toolBeans = resolveTools(ctx);
+        Flux<ChatEventVO> answer = doChat(question, finalPrompt, ctx, skillNode, toolBeans);
+        return Flux.concat(
+                Flux.just(ChatEventVO.intent(
+                        classifyResult.getIntent(), classifyResult.getConfidence(), classifyResult.getMethod())),
+                answer);
     }
 
     /**
@@ -94,12 +111,17 @@ public class PaicodingAgent extends AbstractAgent {
      */
     @Override
     public Flux<ChatEventVO> chat(String question, AgentContext ctx, List<String> imageUrls) {
-        SkillNode skillNode = skillRouter.route(question == null ? "" : question);
+        ClassifyResult classifyResult = skillRouter.classify(question == null ? "" : question);
+        if (INTENT_HUMAN_SERVICE.equals(classifyResult.getIntent())) {
+            return humanServiceFlow(classifyResult, ctx);
+        }
+        SkillNode skillNode = skillRouter.resolve(classifyResult);
         String finalPrompt = appendRagContext(buildSystemPromptWithSkillIndex(skillNode), question, ctx);
         List<Advisor> advisors = extraAdvisors();
         List<Media> media = imageUrls == null ? List.of() : imageUrls.stream().map(this::toMedia).toList();
+        List<Object> toolBeans = resolveTools(ctx);
 
-        return chatClient.prompt()
+        Flux<ChatEventVO> answer = chatClient.prompt()
                 .system(finalPrompt)
                 .user(user -> {
                     user.text(question == null || question.isBlank() ? "请分析图片。" : question);
@@ -111,12 +133,48 @@ public class PaicodingAgent extends AbstractAgent {
                     a.advisors(advisors);
                     a.param(ChatMemory.CONVERSATION_ID, ctx.getSessionId());
                 })
-                .tools(skillLoadTool, articleTools, courseTools)
-                .toolContext(java.util.Map.of("requestId", ctx.getRequestId()))
+                .tools(toolBeans.toArray())
+                .toolContext(java.util.Map.of(
+                        "requestId", ctx.getRequestId(),
+                        "userId", ctx.getUserId() == null ? "" : ctx.getUserId(),
+                        "role", ctx.getRoleCode() == null ? AgentFactory.DEFAULT_ROLE : ctx.getRoleCode()))
                 .stream()
                 .chatResponse()
-                .map(response -> ChatEventVO.data(response.getResult().getOutput().getText()))
+                .flatMap(AbstractAgent::mapTextEvent)
                 .concatWith(getToolResult(ctx.getRequestId()));
+
+        return Flux.concat(
+                Flux.just(ChatEventVO.intent(
+                        classifyResult.getIntent(), classifyResult.getConfidence(), classifyResult.getMethod())),
+                answer);
+    }
+
+    /**
+     * 按角色解析可用工具实例(白名单 ∩ Agent 声明)。
+     */
+    private List<Object> resolveTools(AgentContext ctx) {
+        String role = ctx == null || ctx.getRoleCode() == null || ctx.getRoleCode().isBlank()
+                ? AgentFactory.DEFAULT_ROLE : ctx.getRoleCode();
+        List<String> names = agentFactory.allowedToolNames(AgentFactory.DEFAULT_AGENT_CODE, role);
+        if (names.isEmpty()) {
+            log.warn("该角色没有任何可用工具: role={}", role);
+        }
+        List<Object> tools = new java.util.ArrayList<>(toolRegistry.resolve(names));
+        // 追加该 Agent 声明 MCP server 提供的本地工具
+        tools.addAll(mcpServerManager.resolveDeclaredLocalTools(AgentFactory.DEFAULT_AGENT_CODE));
+        return tools;
+    }
+
+    /**
+     * 转人工短路:入队 + 话术,不调用大模型。
+     */
+    private Flux<ChatEventVO> humanServiceFlow(ClassifyResult classifyResult, AgentContext ctx) {
+        humanQueueService.enqueue(ctx.getSessionId(), ctx.getUserId());
+        String message = "已为您转接人工客服，请稍候。若仍有问题可继续留言，人工坐席接入后即可看到当前会话。";
+        return Flux.concat(
+                Flux.just(ChatEventVO.intent(
+                        classifyResult.getIntent(), classifyResult.getConfidence(), classifyResult.getMethod())),
+                Flux.just(ChatEventVO.data(message)));
     }
 
     private Media toMedia(String value) {
@@ -154,7 +212,7 @@ public class PaicodingAgent extends AbstractAgent {
     private String buildSystemPromptWithSkillIndex(SkillNode skillNode) {
         StringBuilder sb = new StringBuilder();
 
-        // 基础提示词
+        // 基础提示词(base + 主Agent,均来自 DB)
         sb.append(getSystemPrompt()).append("\n\n");
 
         // Skill索引（很短）
@@ -186,9 +244,9 @@ public class PaicodingAgent extends AbstractAgent {
     /**
      * 执行对话（带工具和RAG）
      */
-    private Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx, SkillNode skillNode) {
+    private Flux<ChatEventVO> doChat(String question, String systemPrompt, AgentContext ctx,
+                                     SkillNode skillNode, List<Object> toolBeans) {
         String finalPrompt = appendRagContext(systemPrompt, question, ctx);
-        // 构建Advisors
         List<Advisor> advisors = extraAdvisors();
 
         return chatClient.prompt()
@@ -198,14 +256,14 @@ public class PaicodingAgent extends AbstractAgent {
                 a.advisors(advisors);
                 a.param(ChatMemory.CONVERSATION_ID, ctx.getSessionId());
             })
-            .tools(skillLoadTool, articleTools, courseTools)  // 注册所有工具
-            .toolContext(java.util.Map.of("requestId", ctx.getRequestId()))
+            .tools(toolBeans.toArray())  // 动态白名单工具
+            .toolContext(java.util.Map.of(
+                    "requestId", ctx.getRequestId(),
+                    "userId", ctx.getUserId() == null ? "" : ctx.getUserId(),
+                    "role", ctx.getRoleCode() == null ? AgentFactory.DEFAULT_ROLE : ctx.getRoleCode()))
             .stream()
             .chatResponse()
-            .map(response -> {
-                var text = response.getResult().getOutput().getText();
-                return ChatEventVO.data(text);
-            })
+            .flatMap(AbstractAgent::mapTextEvent)
             .concatWith(getToolResult(ctx.getRequestId()));
     }
 }

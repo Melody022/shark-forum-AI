@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -49,9 +50,32 @@ public class ModelProviderService {
     @Value("${deepseek.api.key:}")
     private String deepSeekApiKey;
 
+    @Value("${OLLAMA_BASE_URL:http://localhost:11434/v1}")
+    private String ollamaBaseUrl;
+
+    @Value("${OLLAMA_MODEL:deepseek-r1:7b}")
+    private String ollamaModel;
+
+    @Value("${OLLAMA_API_KEY:}")
+    private String ollamaApiKey;
+
     public ModelProviderService(ModelProviderConfigMapper mapper, ModelProviderSecretService secretService) {
         this.mapper = mapper;
         this.secretService = secretService;
+    }
+
+    /** 启动时打印实际生效的 provider,便于排查 .env 被 OS 环境变量覆盖这类问题。 */
+    @PostConstruct
+    public void logEffectiveProvider() {
+        try {
+            ActiveProvider p = getActiveLlmProvider();
+            log.info("生效 LLM provider: code={}, baseUrl={}, model={}, hasKey={}",
+                    p.providerCode(), p.apiBaseUrl(), p.model(), hasText(p.apiKey()));
+            log.info("Provider 取值优先级: model_provider_config(DB) > OS/用户环境变量 > .env;"
+                    + " 若生效值与 .env 不一致,请检查是否有同名系统环境变量。");
+        } catch (Exception e) {
+            log.warn("读取生效 provider 失败(可能表未就绪),将在首次调用时重试: {}", e.getMessage());
+        }
     }
 
     public ActiveProvider getActiveLlmProvider() {
@@ -74,6 +98,10 @@ public class ModelProviderService {
         defaults.put("deepseek", new ProviderView("deepseek", "DeepSeek", API_STYLE_OPENAI,
                 normalizeBaseUrl(deepSeekBaseUrl), deepSeekModel, true, false,
                 hasText(deepSeekApiKey), secretService.mask(deepSeekApiKey)));
+        // Ollama：默认启用但非激活，供后台把第 2 层小模型当 provider 管理(OpenAI 兼容)
+        defaults.put("ollama", new ProviderView("ollama", "Ollama(本地)", API_STYLE_OPENAI,
+                normalizeBaseUrl(ollamaBaseUrl), ollamaModel, true, false,
+                hasText(ollamaApiKey), secretService.mask(ollamaApiKey)));
 
         try {
             for (ModelProviderConfig config : mapper.selectList(Wrappers.<ModelProviderConfig>lambdaQuery()
@@ -197,7 +225,12 @@ public class ModelProviderService {
         } catch (Exception e) {
             log.debug("运行时模型配置表不可用，回退环境变量: {}", e.getMessage());
         }
-        return "mimo".equals(code) ? mimoApiKey : deepSeekApiKey;
+        return switch (code) {
+            case "mimo" -> mimoApiKey;
+            case "deepseek" -> deepSeekApiKey;
+            case "ollama" -> ollamaApiKey;
+            default -> null;
+        };
     }
 
     private ActiveProvider toActiveProvider(ProviderView provider) {

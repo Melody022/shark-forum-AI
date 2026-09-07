@@ -5,6 +5,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.itswy.paicodingai.config.AuthContext;
 import com.itswy.paicodingai.config.SessionProperties;
 import com.itswy.paicodingai.entity.ChatSession;
 import com.itswy.paicodingai.mapper.ChatSessionMapper;
@@ -65,7 +66,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         // 保存到数据库
         ChatSession chatSession = ChatSession.builder()
                 .sessionId(sessionVO.getSessionId())
-                .userId(0L)
+                .userId(uid())
                 .build();
         super.save(chatSession);
 
@@ -97,7 +98,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     @Override
     public Map<String, List<ChatSessionVO>> queryHistorySession() {
         var chatSessionList = super.lambdaQuery()
-                .eq(ChatSession::getUserId, 0L)
+                .eq(ChatSession::getUserId, uid())
                 .isNotNull(ChatSession::getTitle)
                 .orderByDesc(ChatSession::getUpdateTime)
                 .last("LIMIT 30")
@@ -113,10 +114,9 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         return chatSessionVOList.stream()
                 .collect(Collectors.groupingBy(vo -> {
                     var days = Math.abs(ChronoUnit.DAYS.between(vo.getUpdateTime().toLocalDate(), now));
-                    if (days == 0) return "当天";
+                    if (days == 0) return "今天";
                     else if (days <= 30) return "最近30天";
-                    else if (days <= 365) return "最近1年";
-                    else return "1年以上";
+                    else return "更早";
                 }));
     }
 
@@ -125,7 +125,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         // 删除数据库记录
         super.remove(com.baomidou.mybatisplus.core.toolkit.Wrappers.<ChatSession>lambdaQuery()
                 .eq(ChatSession::getSessionId, sessionId)
-                .eq(ChatSession::getUserId, 0L));
+                .eq(ChatSession::getUserId, uid()));
 
         // 同时删除 Redis 中的对话记忆
         chatMemoryRepository.deleteByConversationId(sessionId);
@@ -137,7 +137,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         super.lambdaUpdate()
                 .set(ChatSession::getTitle, StrUtil.sub(title, 0, 100))
                 .eq(ChatSession::getSessionId, sessionId)
-                .eq(ChatSession::getUserId, 0L)
+                .eq(ChatSession::getUserId, uid())
                 .update();
     }
 
@@ -154,5 +154,14 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     public void clearConversationHistory(String sessionId) {
         chatMemoryRepository.deleteByConversationId(sessionId);
         log.info("已清除会话历史: {}", sessionId);
+    }
+
+    /** 当前登录用户 id(AuthContext),未登录回退 0。 */
+    private long uid() {
+        try {
+            return Long.parseLong(AuthContext.currentUserId());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 }

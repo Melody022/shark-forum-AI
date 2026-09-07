@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 · paicoding-ai</title>
+    <style>
+        :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;color:#18212f;background:#f5f7fb}
+        *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+        .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:34px 36px;width:380px;box-shadow:0 18px 50px #27364a14}
+        h1{margin:0 0 6px;font-size:22px}.sub{color:#64748b;font-size:13px;margin-bottom:22px}
+        .tip{font-size:12px;color:#94a3b8;background:#f7f9fc;border-left:3px solid #94a3b8;padding:8px 12px;border-radius:6px;margin-bottom:18px}
+        input{width:100%;border:1px solid #cfd8e5;border-radius:8px;padding:11px 12px;font:inherit;margin-bottom:12px}
+        button{width:100%;border:0;border-radius:8px;padding:12px;font:inherit;cursor:pointer;background:#4f46e5;color:#fff}
+        button.gray{background:#e8eef8;color:#24415f;margin-top:10px}
+        .err{color:#e11;font-size:13px;min-height:18px;margin-top:8px}
+        .entry{display:none;margin-top:8px}
+        .entry h2{font-size:15px;color:#334155;margin:0 0 14px}
+        .who{color:#64748b;font-size:13px;margin-bottom:8px}
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>🤖 paicoding-ai</h1>
+    <div class="sub">技术派 AI 客服助手 · 统一入口</div>
+
+    <!-- 登录表单 -->
+    <div id="loginForm">
+        <div class="tip">演示账号：admin / admin123（管理员） 或 user / user123（普通用户）</div>
+        <input id="username" placeholder="用户名" autocomplete="username">
+        <input id="password" type="password" placeholder="密码" autocomplete="current-password">
+        <button onclick="doLogin()">登 录</button>
+        <div id="err" class="err"></div>
+    </div>
+
+    <!-- 登录后按角色给入口 -->
+    <div id="entry" class="entry">
+        <div class="who">已登录：<b id="who"></b></div>
+        <h2>请选择进入：</h2>
+        <button onclick="location.href='/ai-chat.html'">💬 进入 AI 助手（用户）</button>
+        <button class="gray" id="adminEntry" style="display:none" onclick="location.href='/admin/console'">🛠 进入管理后台</button>
+        <button class="gray" style="background:#fff;border:1px solid #e2e8f0;color:#334155;margin-top:16px" onclick="doLogout()">退出登录</button>
+    </div>
+</div>
+
+<script>
+var LS_KEY='paicoding_ai_token', LS_USER='paicoding_ai_user';
+var origFetch=window.fetch;
+window.fetch=function(url,opts){opts=opts||{};var t=localStorage.getItem(LS_KEY);
+  if(t){opts.headers=Object.assign({},opts.headers||{}, {'Authorization':'Bearer '+t});}
+  return origFetch.call(this,url,opts);};
+
+function showErr(m){document.getElementById('err').textContent=m||'';}
+
+function doLogin(){
+  var u=document.getElementById('username').value.trim();
+  var p=document.getElementById('password').value;
+  if(!u||!p){showErr('请输入用户名密码');return;}
+  fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+    .then(function(r){return r.json();})
+    .then(function(res){
+      if(res.code===200){afterLogin(res.data);}
+      else{showErr(res.message||'登录失败');}
+    }).catch(function(){showErr('网络错误');});
+}
+
+function afterLogin(data){
+  localStorage.setItem(LS_KEY,data.token);
+  localStorage.setItem(LS_USER,JSON.stringify(data.user));
+  var nick=data.user.nickname||data.user.username;
+  var role=data.user.roleCode||'USER';
+  document.getElementById('loginForm').style.display='none';
+  var entry=document.getElementById('entry');
+  entry.style.display='block';
+  document.getElementById('who').textContent=nick+'（'+role+'）';
+  document.getElementById('adminEntry').style.display=(role==='ADMIN')?'block':'none';
+}
+
+function doLogout(){
+  var t=localStorage.getItem(LS_KEY);
+  if(t){fetch('/api/auth/logout',{method:'POST'}).catch(function(){});}
+  localStorage.removeItem(LS_KEY);localStorage.removeItem(LS_USER);
+  location.href='/';
+}
+
+// 已登录则直接展示入口
+function restore(){
+  origFetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
+    if(res.code===200){
+      afterLogin({token:localStorage.getItem(LS_KEY)||'', user:{username:'', nickname:res.data.nickname||res.data.userId, roleCode:res.data.roleCode}});
+    }
+  }).catch(function(){/* 未登录,保持登录表单 */});
+}
+restore();
+</script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI 总控台</title>
+    <style>
+        :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;color:#18212f;background:#f5f7fb}
+        *{box-sizing:border-box}body{margin:0}
+        .top{display:flex;justify-content:space-between;align-items:center;background:#fff;border-bottom:1px solid #e2e8f0;padding:14px 22px}
+        .top h1{margin:0;font-size:20px}.top .right{display:flex;gap:10px;align-items:center;font-size:13px;color:#475569}
+        nav{display:flex;gap:4px;padding:10px 22px;background:#fff;border-bottom:1px solid #e2e8f0}
+        nav button{border:0;background:transparent;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px;color:#475569}
+        nav button.on{background:#eef2ff;color:#3730a3;font-weight:600}
+        main{max-width:1180px;margin:22px auto 60px;padding:0 22px}
+        .panel{display:none}.panel.on{display:block}
+        .card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px;margin-bottom:18px}
+        .card h2{margin:0 0 12px;font-size:16px}
+        table{width:100%;border-collapse:collapse;font-size:13px}
+        th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #edf0f5}
+        th{color:#64748b;font-weight:600}
+        button{background:#2563eb;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px}
+        button.gray{background:#e8eef8;color:#24415f}
+        button.danger{background:#e11;color:#fff}
+        input,textarea,select{width:100%;border:1px solid #cfd8e5;border-radius:6px;padding:8px;font:inherit;background:#fff}
+        textarea{min-height:120px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+        .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+        .row input,.row select{width:auto}.muted{color:#64748b;font-size:12px}
+        .status{font-size:13px;margin-top:10px}
+        #loginMask{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:50;display:none;align-items:center;justify-content:center}
+        #loginMask .box{background:#fff;border-radius:12px;padding:26px;width:320px}
+        iframe.mdl{width:100%;height:900px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+        .link{color:#2563eb;text-decoration:none}
+    </style>
+</head>
+<body>
+<header class="top">
+    <h1>🤖 AI 总控台</h1>
+    <div class="right"><span id="who">未登录</span>
+        <button class="gray" onclick="location.href='/ai-chat.html'">返回聊天</button>
+        <button class="gray" onclick="doLogout()">退出</button>
+    </div>
+</header>
+<nav id="nav">
+    <button data-t="users" class="on">用户</button>
+    <button data-t="agents">Agent</button>
+    <button data-t="prompts">Prompt</button>
+    <button data-t="tools">工具白名单</button>
+    <button data-t="mcp">MCP</button>
+    <button data-t="human">转人工</button>
+    <button data-t="models">模型与知识库</button>
+</nav>
+<main>
+    <div id="users" class="panel on">
+        <div class="card">
+            <h2>用户与角色</h2>
+            <div class="row" style="margin-bottom:12px">
+                <input id="uName" placeholder="用户名"><input id="uPwd" placeholder="初始密码">
+                <input id="uNick" placeholder="昵称"><select id="uRole"><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select>
+                <button onclick="createUser()">新增</button>
+            </div>
+            <table id="userTbl"><thead><tr><th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>状态</th><th></th></tr></thead><tbody></tbody></table>
+        </div>
+    </div>
+    <div id="agents" class="panel">
+        <div class="card"><h2>Agent 定义(DB 驱动)</h2><button class="gray" onclick="loadAgents()">刷新</button>
+            <table id="agentTbl"><thead><tr><th>code</th><th>名称</th><th>类型</th><th>prompt_key</th><th>声明工具</th><th>启用</th></tr></thead><tbody></tbody></table>
+        </div>
+    </div>
+    <div id="prompts" class="panel">
+        <div class="card"><h2>Prompt(在线编辑 + 发布热更)</h2>
+            <div class="row" style="margin-bottom:10px"><select id="promptSel" style="min-width:320px"></select>
+                <button class="gray" onclick="loadPromptMeta()">刷新</button></div>
+            <div id="promptMeta" class="muted" style="margin-bottom:8px"></div>
+            <textarea id="promptContent" placeholder="Prompt 正文…"></textarea>
+            <button style="margin-top:10px" onclick="publishPrompt()">发布(版本+1,立即生效)</button>
+            <div id="promptStatus" class="status"></div>
+        </div>
+    </div>
+    <div id="tools" class="panel">
+        <div class="card"><h2>工具白名单(角色 × 工具)</h2><p class="muted">取消勾选后,该角色在聊天中立即失去该工具(模型无工具可用即拒绝)。</p>
+            <table id="toolTbl"></table><div id="toolStatus" class="status"></div>
+        </div>
+    </div>
+    <div id="mcp" class="panel">
+        <div class="card"><h2>MCP Server(DB 驱动)</h2>
+            <div class="row" style="margin-bottom:10px"><input id="mName" placeholder="server_name"><input id="mTransport" value="local" placeholder="local/http/sse/stdio">
+                <input id="mUrl" placeholder="url(远程)"><input id="mTools" placeholder='tools JSON, 如 ["article"]'>
+                <button onclick="upsertMcp()">保存</button></div>
+            <table id="mcpTbl"><thead><tr><th>server_name</th><th>transport</th><th>url</th><th>tools</th><th>enabled</th></tr></thead><tbody></tbody></table>
+            <p class="muted">transport=local 的工具经 ToolRegistry 挂给模型;远程(stdio/http/sse)为占位。</p>
+        </div>
+    </div>
+    <div id="human" class="panel">
+        <div class="card"><h2>转人工队列</h2><button class="gray" onclick="loadHuman()">刷新</button>
+            <table id="humanTbl"><thead><tr><th>sessionId</th><th>userId</th><th>时间</th><th>状态</th><th></th></tr></thead><tbody></tbody></table>
+        </div>
+    </div>
+    <div id="models" class="panel">
+        <div class="card"><h2>模型 Provider 与知识库上传</h2>
+            <p class="muted">Provider 与知识库管理页已接入登录(与总控台同一登录态)。</p>
+            <iframe class="mdl" src="/admin"></iframe>
+        </div>
+    </div>
+</main>
+
+<div id="loginMask"><div class="box">
+    <h3>管理员登录</h3>
+    <p class="muted">演示账号:admin/admin123</p>
+    <input id="lU" placeholder="用户名" style="margin-bottom:8px">
+    <input id="lP" type="password" placeholder="密码" style="margin-bottom:12px">
+    <button onclick="doLogin()" style="width:100%">登录</button>
+    <div id="lErr" class="status" style="color:#e11"></div>
+</div></div>
+
+<script>
+var LS_KEY='paicoding_ai_token';var LS_USER='paicoding_ai_user';
+var origFetch=window.fetch;
+window.fetch=function(url,opts){opts=opts||{};var t=localStorage.getItem(LS_KEY);
+  if(t){opts.headers=Object.assign({},opts.headers||{}, {'Authorization':'Bearer '+t});}
+  return origFetch.call(this,url,opts);};
+
+function setWho(u){document.getElementById('who').textContent=u||'未登录';}
+function showLogin(){document.getElementById('loginMask').style.display='flex';}
+function hideLogin(){document.getElementById('loginMask').style.display='none';}
+
+function doLogin(){
+  var u=document.getElementById('lU').value.trim(),p=document.getElementById('lP').value;
+  fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+    .then(r=>r.json()).then(res=>{
+      if(res.code===200){localStorage.setItem(LS_KEY,res.data.token);localStorage.setItem(LS_USER,JSON.stringify(res.data.user));
+        document.getElementById('lErr').textContent='';hideLogin();setWho((res.data.user.nickname||u)+' · '+res.data.user.roleCode);
+        if(res.data.user.roleCode!=='ADMIN'){alert('当前账号非管理员,仅能浏览');}
+        else{initData();}
+      }else{document.getElementById('lErr').textContent=res.message||'登录失败';}
+    }).catch(()=>document.getElementById('lErr').textContent='网络错误');
+}
+function doLogout(){var t=localStorage.getItem(LS_KEY);if(t){fetch('/api/auth/logout',{method:'POST'}).catch(()=>{});}localStorage.removeItem(LS_KEY);localStorage.removeItem(LS_USER);setWho('未登录');}
+
+// 简单 api 包装
+function api(path,method,body){return fetch(path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined}).then(r=>r.json());}
+
+// tab
+document.getElementById('nav').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.id===b.dataset.t));
+  if(b.dataset.t==='users')loadUsers();
+  if(b.dataset.t==='agents')loadAgents();
+  if(b.dataset.t==='prompts')loadPromptMeta();
+  if(b.dataset.t==='tools')loadTools();
+  if(b.dataset.t==='mcp')loadMcp();
+  if(b.dataset.t==='human')loadHuman();
+});
+
+function tr(html){return '<tr>'+html+'</tr>';}
+
+// users
+function loadUsers(){api('/admin/api/users').then(res=>{if(!res||res.code!==200)return;
+  var d=res.data,td=document.querySelector('#userTbl tbody');td.innerHTML=d.map(u=>tr('<td>'+u.id+'</td><td>'+u.username+'</td><td>'+u.nickname+'</td><td>'+u.roleCode+'</td><td>'+(u.enabled===1?'启用':'停用')+'</td><td><button class="gray" onclick="toggleUser('+u.id+','+(u.enabled===1?0:1)+')">'+(u.enabled===1?'停用':'启用')+'</button></td>')).join('');});}
+function toggleUser(id,en){api('/admin/api/users/'+id,'PUT',{enabled:en===1}).then(loadUsers);}
+function createUser(){var u=document.getElementById('uName').value.trim(),p=document.getElementById('uPwd').value,n=document.getElementById('uNick').value,r=document.getElementById('uRole').value;
+  if(!u||!p){alert('用户名/密码必填');return;}
+  api('/admin/api/users','POST',{username:u,password:p,nickname:n||u,roleCode:r}).then(res=>{alert((res.code===200?'创建成功':'创建失败:'+res.message));loadUsers();});}
+
+// agents
+function loadAgents(){api('/admin/api/agents').then(res=>{if(!res||res.code!==200)return;var d=res.data;
+  document.querySelector('#agentTbl tbody').innerHTML=d.map(a=>tr('<td>'+a.agentCode+'</td><td>'+a.agentName+'</td><td>'+a.agentType+'</td><td>'+a.promptKey+'</td><td>'+(a.tools||'')+'</td><td>'+(a.enabled===1?'是':'否')+'</td>')).join('');});}
+
+// prompts
+function loadPromptMeta(){api('/admin/api/prompts').then(res=>{if(!res||res.code!==200)return;var d=res.data;
+  var s=document.getElementById('promptSel');s.innerHTML=d.map(p=>'<option value="'+p.promptKey+'">'+p.promptKey+' (v'+p.version+')</option>').join('');
+  if(d.length){s.value=d[0].promptKey;}loadPrompt();});}
+function loadPrompt(){var k=document.getElementById('promptSel').value;if(!k)return;
+  api('/admin/api/prompts/'+k).then(res=>{if(!res||res.code!==200)return;var p=res.data;
+    document.getElementById('promptMeta').textContent='type='+p.promptType+' · version='+p.version;
+    document.getElementById('promptContent').value=p.content||'';document.getElementById('promptStatus').textContent='';});}
+function publishPrompt(){var k=document.getElementById('promptSel').value,c=document.getElementById('promptContent').value;
+  api('/admin/api/prompts/'+k,'PUT',{content:c}).then(res=>{document.getElementById('promptStatus').textContent=(res.code===200?('已发布 v'+res.data.version):('失败:'+res.message));loadPromptMeta();});}
+
+// tools
+function loadTools(){api('/admin/api/tools').then(res=>{if(!res||res.code!==200)return;var d=res.data;var tools=d.tools||[],grants=d.grants||{};
+  var roles=Object.keys(grants).length?Object.keys(grants):['USER','ADMIN'];
+  var h='<tr><th>工具</th>'+roles.map(r=>'<th>'+r+'</th>').join('')+'</tr>';
+  var b=tools.map(function(t){return '<tr><td>'+t.toolName+'<div class="muted">'+t.toolDesc+'</div></td>'+roles.map(function(r){var on=(grants[r]||[]).indexOf(t.toolName)>=0;return '<td><input type="checkbox" '+(on?'checked':'')+' onchange="setTool(\''+r+'\',\''+t.toolName+'\',this.checked)"></td>';}).join('')+'</tr>';}).join('');
+  document.getElementById('toolTbl').innerHTML=h+b;document.getElementById('toolStatus').textContent='';});}
+function setTool(role,tool,on){api('/admin/api/tools','PUT',{roleCode:role,toolName:tool,allowed:on}).then(function(){document.getElementById('toolStatus').textContent='已更新: '+role+' / '+tool;loadTools();});}
+
+// mcp
+function loadMcp(){api('/admin/api/mcp-servers').then(res=>{if(!res||res.code!==200)return;var d=res.data;
+  document.querySelector('#mcpTbl tbody').innerHTML=d.map(m=>tr('<td>'+m.serverName+'</td><td>'+m.transport+'</td><td>'+(m.url||'')+'</td><td>'+(m.tools||'')+'</td><td>'+(m.enabled===1?'是':'否')+'</td>')).join('');});}
+function upsertMcp(){var body={serverName:document.getElementById('mName').value.trim(),transport:document.getElementById('mTransport').value.trim()||'local',url:document.getElementById('mUrl').value.trim()||null,tools:document.getElementById('mTools').value.trim()||null,enabled:1};
+  if(!body.serverName){alert('server_name 必填');return;}api('/admin/api/mcp-servers','PUT',body).then(function(){loadMcp();});}
+
+// human
+function loadHuman(){api('/admin/api/human-queue').then(res=>{if(!res||res.code!==200)return;var d=res.data||[];
+  document.querySelector('#humanTbl tbody').innerHTML=d.length?d.map(q=>tr('<td>'+q.sessionId+'</td><td>'+(q.userId||'')+'</td><td>'+new Date(q.ts).toLocaleString()+'</td><td>'+q.status+'</td><td><button onclick="acceptHuman(\''+q.sessionId+'\')">标记已接入</button></td>')).join(''):'<tr><td colspan="5">暂无待人工</td></tr>';});}
+function acceptHuman(sid){api('/admin/api/human-queue/'+sid+'/accept','POST').then(loadHuman);}
+
+// initData after login
+function initData(){loadUsers();loadAgents();loadPromptMeta();loadTools();loadMcp();loadHuman();}
+
+// 启动:先问 /me;非登录 → 登录;非管理员 → 回门户;管理员 → 加载数据
+(function(){
+  fetch('/api/auth/me').then(function(r){return r.json();}).then(function(res){
+    if(res.code===200){
+      if(res.data.roleCode!=='ADMIN'){alert('当前账号非管理员，请用管理员账号登录');location.href='/';return;}
+      setWho((res.data.nickname||res.data.userId)+' · ADMIN');
+      initData();
+    }else{localStorage.removeItem(LS_KEY);localStorage.removeItem(LS_USER);showLogin();}
+  }).catch(function(){showLogin();});
+})();
+</script>
+</body>
+</html>

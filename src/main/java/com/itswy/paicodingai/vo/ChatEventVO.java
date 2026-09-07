@@ -93,4 +93,17 @@ public class ChatEventVO {
             ChatEventTypeEnum.ROUTE.getValue()
         );
     }
+
+    /**
+     * 快速创建一个意图事件(复用 ROUTE 1004 通道),在流首推送前置意图识别结果。
+     * @param intent 意图ID
+     * @param confidence 置信度(0-1)
+     * @param method 识别方法(keyword/small-model/large-model/default)
+     */
+    public static ChatEventVO intent(String intent, double confidence, String method) {
+        return new ChatEventVO(
+            Map.of("intent", intent, "confidence", confidence, "method", method),
+            ChatEventTypeEnum.ROUTE.getValue()
+        );
+    }
 }

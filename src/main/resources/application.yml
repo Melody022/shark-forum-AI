@@ -7,6 +7,14 @@ spring:
   application:
     name: paicoding-ai
 
+  # .env 加载：原先依赖的 spring-dotenv 4.0.0 只通过 META-INF/spring.factories 注册
+  # SpringApplicationRunListener，在 Spring Boot 4.x 下不再生效（.env 实际从未被加载），
+  # 这里改用 Spring Boot 原生 config data 导入；optional 表示文件缺失时不阻断启动。
+  # 注意：导入的属性优先级仍低于 OS 环境变量(systemEnvironment)，与原 spring-dotenv 行为一致；
+  # 相对路径基于进程工作目录（IDEA 与 mvn spring-boot:run 均为项目根目录）。
+  config:
+    import: optional:file:.env[.properties]
+
   profiles:
     active: dev
 
@@ -55,14 +63,6 @@ spring:
             - getCurrentTime
             - calculate
 
-  # Spring Cloud Nacos - 服务注册与发现（用于Feign调用paicoding）
-  cloud:
-    nacos:
-      discovery:
-        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-        namespace: ${NACOS_NAMESPACE:}
-        enabled: true  # 启用服务发现
-
 ai:
   session:
     title: "HELLO, 我是AI助手"
@@ -97,18 +97,13 @@ ai:
       expire-days: 7                          # 过期天数
       lock-timeout: 30000                     # 锁超时时间（毫秒）
 
-  nacos:
-    server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-    namespace: ${NACOS_NAMESPACE:}
-    group: PAICODING_AI_PROMPT
-
-# paicoding提示词配置（用于SystemPromptConfig读取）
-paicoding:
-  ai:
-    nacos:
-      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
-      namespace: ${NACOS_NAMESPACE:}
-      group: PAICODING_AI_PROMPT
+  # 意图路由（三层漏斗）配置
+  routing:
+    enabled: ${AI_INTENT_ROUTING_ENABLED:true}   # false 时仅保留规则层，跳过模型意图
+    intent-small:                                 # 第 2 层小模型：默认指向本地 Ollama
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+      model: ${OLLAMA_MODEL:deepseek-r1:7b}
+      api-key: ${OLLAMA_API_KEY:}
 
 # RAG 解析、切片和向量索引配置
 rag:
